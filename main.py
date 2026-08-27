@@ -13,7 +13,7 @@ BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
 
-SERVICES = ["IMO", "TELEGRAM", "VK", "WHATSAPP"]
+SERVICES = ["TELEGRAM", "WHATSAPP", "FACEBOOK", "TIKTOK"]
 COUNTRIES = ["HAITI 🇭🇹", "ITALY 🇮🇹", "MALAYSIA 🇲🇾", "MOROCCO 🇲🇦", "MYANMAR 🇲🇲", "NIGERIA 🇳🇬", "TANZANIA 🇹🇿", "UKRAINE 🇺🇦"]
 
 async def is_joined(user_id, context):
@@ -30,27 +30,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if await is_joined(user_id, context):
         kb = [
-            [InlineKeyboardButton("📞 নাম্বার নিন", callback_data="services"), InlineKeyboardButton("💰 টাকা উত্তোলন", callback_data="main")],
-            [InlineKeyboardButton("📊 লাইভ ট্রাফিক", callback_data="main"), InlineKeyboardButton("👑 আমার স্ট্যাটাস", callback_data="main")],
-            [InlineKeyboardButton("🆘 সাপোর্ট", url=SUPPORT_ID)]
+            [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="main")],
+            [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="main"), InlineKeyboardButton("👑 MY STATUS", callback_data="main")],
+            [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]
         ]
         await update.message.reply_text(
-            "👑 **APN NUMBER BOT এ স্বাগতম**\n\n"
-            "আপনার নির্ভরযোগ্য নাম্বার এবং OTP পরিষেবা। নিচের মেনু থেকে আপনার কাঙ্খিত সেবাটি নির্বাচন করুন।",
+            "👑 **APN NUMBER BOT এ আপনাকে স্বাগতম**\n\n"
+            "আপনার নির্ভরযোগ্য নাম্বার এবং OTP পরিষেবা। অনুগ্রহ করে নিচের মেনু থেকে আপনার কাঙ্খিত সেবাটি নির্বাচন করুন।",
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="Markdown"
         )
     else:
         kb = [
-            [InlineKeyboardButton("📢 APN OFFICIAL চ্যানেল", url=CH1)],
-            [InlineKeyboardButton("📢 APN ব্যাকআপ চ্যানেল", url=CH2)],
-            [InlineKeyboardButton("🤖 প্রক্সি ভিপিএন বাই বট", url=BOT_LINK)],
-            [InlineKeyboardButton("👥 APN OTP গ্রুপ", url=OTP_GROUP)],
-            [InlineKeyboardButton("✅ জয়েন চেক করুন", callback_data="check")]
+            [InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
+            [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
+            [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)],
+            [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)],
+            [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]
         ]
         await update.message.reply_text(
-            "⚠️ **বট ব্যবহারের আগে অনুগ্রহ করে চ্যানেলগুলোতে জয়েন করুন**\n\n"
-            "আমাদের সকল আপডেট এবং OTP পেতে নিচের চ্যানেল ও গ্রুপে জয়েন করা বাধ্যতামূলক। জয়েন করার পর 'জয়েন চেক করুন' বাটনে ক্লিক করুন।",
+            "⚠️ **বট ব্যবহারের পূর্বে চ্যানেলে জয়েন করুন**\n\n"
+            "আমাদের সকল আপডেট ও OTP পেতে নিচের চ্যানেলগুলোতে জয়েন করা বাধ্যতামূলক।",
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="Markdown"
         )
@@ -64,53 +64,45 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "check":
         if await is_joined(user_id, context):
             kb = [
-                [InlineKeyboardButton("📞 নাম্বার নিন", callback_data="services"), InlineKeyboardButton("💰 টাকা উত্তোলন", callback_data="main")],
-                [InlineKeyboardButton("📊 লাইভ ট্রাফিক", callback_data="main"), InlineKeyboardButton("👑 আমার স্ট্যাটাস", callback_data="main")],
-                [InlineKeyboardButton("🆘 সাপোর্ট", url=SUPPORT_ID)]
+                [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="main")],
+                [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="main"), InlineKeyboardButton("👑 MY STATUS", callback_data="main")],
+                [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]
             ]
-            await q.edit_message_text(
-                "✅ **ধন্যবাদ! আপনি সফলভাবে জয়েন করেছেন।**\n\n👑 APN NUMBER BOT এ আপনাকে স্বাগতম।",
-                reply_markup=InlineKeyboardMarkup(kb),
-                parse_mode="Markdown"
-            )
+            await q.edit_message_text("✅ **যাচাইকরণ সফল!**\n\nAPN NUMBER BOT এ আপনাকে স্বাগতম।", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         else:
             kb = [
-                [InlineKeyboardButton("📢 APN OFFICIAL চ্যানেল", url=CH1)],
-                [InlineKeyboardButton("📢 APN ব্যাকআপ চ্যানেল", url=CH2)],
-                [InlineKeyboardButton("🤖 প্রক্সি ভিপিএন বাই বট", url=BOT_LINK)],
-                [InlineKeyboardButton("👥 APN OTP গ্রুপ", url=OTP_GROUP)],
-                [InlineKeyboardButton("✅ জয়েন চেক করুন", callback_data="check")]
+                [InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
+                [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
+                [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)],
+                [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)],
+                [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]
             ]
-            await q.edit_message_text(
-                "❌ **আপনি এখনো সকল চ্যানেলে জয়েন করেননি।**\n\nঅনুগ্রহ করে উপরের সকল চ্যানেলে জয়েন করে আবার চেক করুন।",
-                reply_markup=InlineKeyboardMarkup(kb),
-                parse_mode="Markdown"
-            )
+            await q.edit_message_text("❌ **আপনি এখনো সকল চ্যানেলে জয়েন করেননি।**\nঅনুগ্রহ করে জয়েন করে পুনরায় চেষ্টা করুন।", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if not await is_joined(user_id, context):
         kb = [
-            [InlineKeyboardButton("📢 APN OFFICIAL চ্যানেল", url=CH1)],
-            [InlineKeyboardButton("📢 APN BACKUP চ্যানেল", url=CH2)],
-            [InlineKeyboardButton("🤖 PROXY VPN BUY BOT", url=BOT_LINK)],
-            [InlineKeyboardButton("👥 APN OTP গ্রুপ", url=OTP_GROUP)],
-            [InlineKeyboardButton("✅ জয়েন চেক করুন", callback_data="check")]
+            [InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
+            [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
+            [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)],
+            [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)],
+            [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]
         ]
-        await q.edit_message_text("⚠️ বট ব্যবহার করতে হলে আপনাকে অবশ্যই আমাদের চ্যানেলে জয়েন করতে হবে।", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text("⚠️ অনুগ্রহ করে প্রথমে আমাদের চ্যানেলে জয়েন করুন।", reply_markup=InlineKeyboardMarkup(kb))
         return
 
     user_data = context.user_data
     if data == "main":
         kb = [
-            [InlineKeyboardButton("📞 নাম্বার নিন", callback_data="services"), InlineKeyboardButton("💰 টাকা উত্তোলন", callback_data="main")],
-            [InlineKeyboardButton("📊 লাইভ ট্রাফিক", callback_data="main"), InlineKeyboardButton("👑 আমার স্ট্যাটাস", callback_data="main")],
-            [InlineKeyboardButton("🆘 সাপোর্ট", url=SUPPORT_ID)]
+            [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="main")],
+            [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="main"), InlineKeyboardButton("👑 MY STATUS", callback_data="main")],
+            [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]
         ]
-        await q.edit_message_text("👑 **APN NUMBER BOT**\n\nআপনার পছন্দের সেবাটি নির্বাচন করুন।", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        await q.edit_message_text("👑 **APN NUMBER BOT**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     elif data == "services":
-        kb = [[InlineKeyboardButton(f"📱 {s}", callback_data=f"s_{s}")] for s in SERVICES]
-        kb.append([InlineKeyboardButton("❌ বন্ধ করুন", callback_data="main")])
-        await q.edit_message_text("🔹 **অনুগ্রহ করে একটি সার্ভিস নির্বাচন করুন:**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        kb = [[InlineKeyboardButton(f"{s}", callback_data=f"s_{s}")] for s in SERVICES]
+        kb.append([InlineKeyboardButton("❌ CLOSE", callback_data="main")])
+        await q.edit_message_text("🔹 **Please select a service:**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     elif data.startswith("s_"):
         user_data['service'] = data[2:]
         kb = []; row = []
@@ -118,19 +110,25 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row.append(InlineKeyboardButton(c, callback_data=f"c_{c}"))
             if len(row)==2: kb.append(row); row=[]
         if row: kb.append(row)
-        kb.append([InlineKeyboardButton("↩️ সার্ভিস পরিবর্তন করুন", callback_data="services")])
-        await q.edit_message_text(f"✅ সার্ভিস: **{user_data['service']}**\n\n🌍 এখন দেশ নির্বাচন করুন:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        kb.append([InlineKeyboardButton("↩️ CHANGE SERVICE", callback_data="services")])
+        await q.edit_message_text(f"Service: **{user_data['service']}**\n\n🌍 **Please select a country:**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     elif data.startswith("c_"):
         country = data[2:]
         service = user_data.get('service', 'TELEGRAM')
-        num1 = get_number(service, country)
+        num = get_number(service, country)
         kb = [
-            [InlineKeyboardButton(f"📞 {country} {num1}", callback_data="main")],
-            [InlineKeyboardButton("🌐 দেশ পরিবর্তন", callback_data=f"s_{service}"), InlineKeyboardButton("🔢 প্রিফিক্স সেট করুন", callback_data="main")],
-            [InlineKeyboardButton("🔄 নাম্বার পরিবর্তন করুন", callback_data=f"c_{country}")],
-            [InlineKeyboardButton("🛡️ APN OTP গ্রুপে জয়েন করুন", url=OTP_GROUP)]
+            [InlineKeyboardButton(f"{country} {num}", callback_data="main")],
+            [InlineKeyboardButton("🌐 CHANGE COUNTRY", callback_data=f"s_{service}"), InlineKeyboardButton("🔢 SET PREFIX", callback_data="main")],
+            [InlineKeyboardButton("🔄 CHANGE NUMBER", callback_data=f"c_{country}")],
+            [InlineKeyboardButton("🛡️ OTP GROUP", url=OTP_GROUP)]
         ]
-        await q.edit_message_text(f"🎉 আপনার **{country}** এর **{service}** নাম্বার প্রস্তুত:\n\n`{num1}`\n\nOTP পেতে নিচের গ্রুপে নজর রাখুন।", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        # EITA HOLO TOR GREEN MARK KORA JAYGA - EKHON PROFESSIONAL BANGLA
+        text = (
+            f"🎉 **আপনার {country} এর {service} নাম্বার প্রস্তুত:**\n\n"
+            f"`{num}`\n\n"
+            f"✅ OTP পেতে অনুগ্রহ করে নিচের OTP গ্রুপে নজর রাখুন।"
+        )
+        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
