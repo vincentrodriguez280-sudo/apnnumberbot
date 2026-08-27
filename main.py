@@ -53,25 +53,27 @@ async def is_joined(user_id, context):
         except: return False
     return True
 
-async def check_otp_job(context: ContextTypes.DEFAULT_TYPE):
-    job_data = context.job.data
-    otp = get_otp(job_data['order_id'])
-    if otp:
-        try:
-            await context.bot.send_message(chat_id=job_data['user_id'], text=f"✅ **OTP Received!**\n\n📞 Number: `{job_data['number']}`\n🔑 OTP: `{otp}`\n🌍 Service: {job_data['service']}", parse_mode="Markdown")
-        except: pass
-        try:
-            await context.bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{job_data['number']}`\n🔑 OTP: `{otp}`\nService: {job_data['service']} | {job_data['country']}\nUser: {job_data['user_id']}")
-        except: pass
-        if job_data['service'] == "FACEBOOK":
-            db = load_json(BAL_FILE, {})
-            if str(job_data['user_id']) in db:
-                db[str(job_data['user_id'])]["balance"] += 0.50/125
-                save_json(BAL_FILE, db)
-                try:
-                    await context.bot.send_message(chat_id=job_data['user_id'], text=f"💰 **Reward Added!** 0.50 BDT", parse_mode="Markdown")
-                except: pass
-        context.job.schedule_removal()
+async def otp_watcher(bot, order_id, user_id, number, service, country):
+    # 3 min dhore 5 sec por por OTP check (job_queue chara)
+    for _ in range(36):
+        await asyncio.sleep(5)
+        otp = await asyncio.to_thread(get_otp, order_id)
+        if otp:
+            try:
+                await bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 Number: `{number}`\n🔑 OTP: `{otp}`\n🌍 Service: {service}", parse_mode="Markdown")
+            except: pass
+            try:
+                await bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{number}`\n🔑 OTP: `{otp}`\nService: {service} | {country}\nUser: {user_id}")
+            except: pass
+            if service == "FACEBOOK":
+                db = load_json(BAL_FILE, {})
+                if str(user_id) in db:
+                    db[str(user_id)]["balance"] += 0.50/125
+                    save_json(BAL_FILE, db)
+                    try:
+                        await bot.send_message(chat_id=user_id, text=f"💰 **Reward Added!** 0.50 BDT", parse_mode="Markdown")
+                    except: pass
+            return
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -122,7 +124,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service = data[2:]
         context.user_data['service']=service
         if service == "TELEGRAM":
-            await q.edit_message_text(f"**{service} SERVICE**\n\n❌ **Stock Nai!**\nTelegram ekhon stock e nai. Facebook/WhatsApp try koro.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]), parse_mode="Markdown")
+            await q.edit_message_text(f"**{service} SERVICE**\n\n❌ **Stock Nai!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]), parse_mode="Markdown")
             return
         countries = get_all_countries()
         kb = []
@@ -138,20 +140,17 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service = context.user_data.get('service','FACEBOOK')
         display = get_display_name(country_code)
         await q.edit_message_text(f"⏳ **Number nichhi {display} er jonno...**")
-
         order = await asyncio.to_thread(create_order, service, country_code)
-
         if not order:
-            await q.edit_message_text(f"❌ **Stock Sesh!**\nRange `{get_display_name(country_code)} - 26134` e number nai.\nPanel e balance/stock check koro.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]), parse_mode="Markdown")
+            await q.edit_message_text(f"❌ **Stock Sesh!**\nRange 26134 e number nai.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
-
         num1 = order['number']
         order_id = order['id']
         add_request(uid, display)
-        context.job_queue.run_repeating(check_otp_job, interval=5, first=5, last=180, data={"order_id": order_id, "user_id": uid, "number": num1, "service": service, "country": display}, name=f"otp_{order_id}_{uid}")
-
+        # job_queue er bodole asyncio task
+        asyncio.create_task(otp_watcher(context.bot, order_id, uid, num1, service, display))
         kb = [[InlineKeyboardButton(f"📋 {num1} - Tap to Copy", callback_data=f"copy_{num1}")], [InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)]]
-        txt = f"**YOUR {display} {service} NUMBER**\n\n`{num1}`\n\n⏳ **OTP wait korchi... OTP asle auto asbe + group e jabe.**\n\n💡 Facebook hole per OTP **0.50 BDT** paben."
+        txt = f"**YOUR {display} {service} NUMBER**\n\n`{num1}`\n\n⏳ **OTP wait korchi...**"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
@@ -162,4 +161,4 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(handle))
-app.run_polling()
+app.run_polling(drop_pending_updates=True)
