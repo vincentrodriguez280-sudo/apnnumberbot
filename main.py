@@ -1,11 +1,10 @@
-import os, json, asyncio
+import os, json
 from datetime import datetime, timedelta
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, CopyTextButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-from panel import get_number, get_otp, create_order # panel.py te ei 3 ta function thakbe
+from panel import get_number, get_otp, create_order
 
 TOKEN = os.getenv("BOT_TOKEN")
-
 MUST_JOIN = ["@ApnNumber", "@APNOTP"]
 CH1 = "https://t.me/ApnNumber"
 CH2 = "https://t.me/+3N7St38N__ZkMTZl"
@@ -55,7 +54,6 @@ async def is_joined(user_id, context):
         except: return False
     return True
 
-# --- OTP CHECKER JOB (Auto OTP + Reward) ---
 async def check_otp_job(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
     order_id = job_data['order_id']
@@ -63,20 +61,14 @@ async def check_otp_job(context: ContextTypes.DEFAULT_TYPE):
     number = job_data['number']
     service = job_data['service']
     country = job_data['country']
-
-    otp = get_otp(order_id) # panel.py theke OTP anbe
+    otp = get_otp(order_id)
     if otp:
-        # 1. User ke OTP pathao
         try:
-            await context.bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 Number: `{number}`\n🔑 OTP: `{otp}`\n🌍 Service: {service}", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 Number: `{number}`\n🔑 OTP: `{otp}`\nService: {service}", parse_mode="Markdown")
         except: pass
-
-        # 2. OTP Group e forward koro
         try:
-            await context.bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n\n📞 `{number}`\n🔑 OTP: `{otp}`\n👤 Service: {service} | {country}\n👤 User: {user_id}")
+            await context.bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{number}`\n🔑 OTP: `{otp}`\nService: {service} | {country}\nUser: {user_id}", parse_mode="Markdown")
         except: pass
-
-        # 3. Facebook hole 0.50 BDT reward
         if service.upper() == "FACEBOOK":
             db = load_json(BAL_FILE, {})
             reward_bdt = 0.50
@@ -85,10 +77,8 @@ async def check_otp_job(context: ContextTypes.DEFAULT_TYPE):
                 db[str(user_id)]["balance"] += reward_usd
                 save_json(BAL_FILE, db)
                 try:
-                    await context.bot.send_message(chat_id=user_id, text=f"💰 **Reward Added!**\n\nFacebook OTP er jonno apni **{reward_bdt} BDT (${reward_usd:.4f})** peyechen!", parse_mode="Markdown")
+                    await context.bot.send_message(chat_id=user_id, text=f"💰 **Reward Added!**\nFacebook OTP er jonno **{reward_bdt} BDT** peyechen!", parse_mode="Markdown")
                 except: pass
-
-        # Job stop
         return False
     return True
 
@@ -114,7 +104,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     data = q.data
     uid = q.from_user.id
-
     if data!="check" and not await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
               [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
@@ -123,7 +112,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
               [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
         await q.edit_message_text("❌ **আপনি চ্যানেল থেকে লিভ নিয়েছেন!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
-
     if data=="check":
         info=get_user(uid)
         if await is_joined(uid, context):
@@ -140,7 +128,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                   [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
             await q.edit_message_text("❌ **এখনো জয়েন করেননি।**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
-
     if data=="main":
         info=get_user(uid)
         kb = [[InlineKeyboardButton(f"💳 Balance: ${info['balance']:.3f}", callback_data="my_status")],
@@ -148,7 +135,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
               [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")],
               [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
         await q.edit_message_text("👑 **APN NUMBER BOT**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
     elif data=="my_status":
         db = load_json(BAL_FILE, {})
         user = db.get(str(uid), {"balance":0,"requests":[],"total":0,"ref":0})
@@ -162,7 +148,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = f"━━━━━━━━━━━━━━━━━━━━\n👑 **MY STATUS**\n━━━━━━━━━━━━━━━━━━━━\n🆔 **ID:** `{uid}`\n💳 **Balance:** {user['balance']:.3f} $ ({taka:.2f} ৳)\n━━━━━━━━━━━━━━━━━━━━\n👑 **My Statistics**\n┣ Today: {today}\n┣ Last 7 Days: {last7}\n┣ Last 30 Days: {last30}\n┗ Lifetime: {lifetime}\n━━━━━━━━━━━━━━━━━━━━\n🦀 **Referrals:** {user.get('ref',0)}\n━━━━━━━━━━━━━━━━━━━━"
         kb = [[InlineKeyboardButton("🧚 Refer", callback_data="refer")],[InlineKeyboardButton("📱 Connect WhatsApp", url=SUPPORT_ID)],[InlineKeyboardButton("❌ CLOSE", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
     elif data=="live":
         tr = load_json(TRAFFIC_FILE, {})
         total = sum(tr.values()) if tr else 41
@@ -177,21 +162,15 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += f"\n⏰ **Last Update:** {now_str}"
         kb = [[InlineKeyboardButton("🔄 Refresh", callback_data="live")],[InlineKeyboardButton("❌ CLOSE", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
     elif data=="withdrawal":
         info=get_user(uid)
         txt = f"━━━━━━━━━━━━━━━━━━━━\n《 🔮 **WITHDRAWAL** 》\n━━━━━━━━━━━━━━━━━━━━\n🔥 **Total Otp:** {info['total']}\n━━━━━━━━━━━━━━━━━━━━\n🙋 **Total Reffer :** {info.get('ref',0)}\n━━━━━━━━━━━━━━━━━━━━\n💰 **BALANCE:** ${info['balance']:.3f}\n━━━━━━━━━━━━━━━━━━━━\n🧪 **MINIMUM:** $0.02\n━━━━━━━━━━━━━━━━━━━━\n**SELECT METHOD:**"
         kb = [[InlineKeyboardButton("🕊️ Bkash", callback_data="wd_bkash")],[InlineKeyboardButton("🟡 Binance", callback_data="wd_binance")],[InlineKeyboardButton("❌ Cancel", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
-    elif data.startswith("wd_"):
-        await q.edit_message_text(f"💰 **{data[3:].upper()} Withdrawal**\n\nBalance ${get_user(uid)['balance']:.3f}\nSupport: {SUPPORT_ID}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)],[InlineKeyboardButton("⬅️ BACK", callback_data="withdrawal")]]), parse_mode="Markdown")
-
     elif data=="services":
         kb = [[InlineKeyboardButton(f"{s}", callback_data=f"s_{s}")] for s in SERVICES]
         kb.append([InlineKeyboardButton("❌ CLOSE", callback_data="main")])
         await q.edit_message_text("🔹 **Please select a service:**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
     elif data.startswith("s_"):
         context.user_data['service']=data[2:]
         kb=[]; row=[]
@@ -201,32 +180,30 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if row: kb.append(row)
         kb.append([InlineKeyboardButton("↩️ CHANGE SERVICE", callback_data="services")])
         await q.edit_message_text(f"Service: **{context.user_data['service']}**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
     elif data.startswith("c_"):
         country=data[2:]
         service=context.user_data.get('service','TELEGRAM')
-
-        # API theke number order
-        order = create_order(service, country) # order = {"number": "+39...", "id": "12345"}
+        order = create_order(service, country)
         if not order:
-            await q.edit_message_text("❌ Number stock sesh! Onno country try koro.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")]]))
+            await q.edit_message_text("❌ Stock sesh!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")]]))
             return
-
         num1 = order['number']
         order_id = order['id']
         add_request(uid, country)
-
-        # Auto OTP checker start (proti 5 sec e check korbe 2 min dhore)
         context.job_queue.run_repeating(check_otp_job, interval=5, first=5, last=120, data={"order_id": order_id, "user_id": uid, "number": num1, "service": service, "country": country}, name=f"otp_{order_id}")
-
+        # Copy er jonno button e number, click korle alada message e copyable code hisebe pathabe
         kb = [
-            [InlineKeyboardButton(f"📋 {num1}", copy_text=CopyTextButton(text=num1))],
+            [InlineKeyboardButton(f"📋 {num1} - Tap to Copy", callback_data=f"copy_{num1}")],
             [InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}"), InlineKeyboardButton("🔢 Set Prefix", callback_data="main")],
             [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}")],
             [InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)]
         ]
-        txt = f"**YOUR {country} {service} NUMBER**\n\n🎉 **আপনার {country} এর {service} নাম্বার প্রস্তুত:**\n\n`{num1}`\n\n⏳ **OTP er jonno opekkha korchi... OTP asle bot e ebong {OTP_GROUP} group e chole asbe.**\n\n💡 Facebook hole per OTP **0.50 BDT** paben."
+        txt = f"**YOUR {country} {service} NUMBER**\n\n🎉 **আপনার {country} এর {service} নাম্বার প্রস্তুত:**\n\n`{num1}`\n\n⏳ **OTP er jonno opekkha korchi...**\n💡 Facebook hole per OTP **0.50 BDT** paben."
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    elif data.startswith("copy_"):
+        num = data[5:]
+        await q.answer()
+        await context.bot.send_message(chat_id=uid, text=f"📋 **Copy this number:**\n\n`{num}`\n\nTap and hold to copy.", parse_mode="Markdown")
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
