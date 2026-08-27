@@ -2,7 +2,7 @@ import os, json
 from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-from panel import get_number, get_otp, create_order, RANGE_MAP, get_all_countries
+from panel import create_order, get_otp, get_all_countries, get_display_name
 
 TOKEN = os.getenv("BOT_TOKEN")
 MUST_JOIN = ["@ApnNumber", "@APNOTP"]
@@ -13,8 +13,6 @@ OTP_GROUP = "https://t.me/APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
 
 SERVICES = ["FACEBOOK", "WHATSAPP", "TELEGRAM"]
-# Ekhon desh er list auto panel.py theke asbe
-COUNTRIES = get_all_countries()
 
 BAL_FILE = "balances.json"
 TRAFFIC_FILE = "traffic.json"
@@ -25,7 +23,6 @@ def load_json(f, default):
             with open(f,'r') as fp: return json.load(fp)
         except: return default
     return default
-
 def save_json(f, data):
     with open(f,'w') as fp: json.dump(data, fp)
 
@@ -58,34 +55,20 @@ async def is_joined(user_id, context):
 
 async def check_otp_job(context: ContextTypes.DEFAULT_TYPE):
     job_data = context.job.data
-    order_id = job_data['order_id']
-    user_id = job_data['user_id']
-    number = job_data['number']
-    service = job_data['service']
-    country = job_data['country']
-
-    otp = get_otp(order_id)
+    otp = get_otp(job_data['order_id'])
     if otp:
         try:
-            await context.bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 Number: `{number}`\n🔑 OTP: `{otp}`\n🌍 Service: {service}", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=job_data['user_id'], text=f"✅ **OTP Received!**\n\n📞 Number: `{job_data['number']}`\n🔑 OTP: `{otp}`\n🌍 Service: {job_data['service']}", parse_mode="Markdown")
         except: pass
         try:
-            await context.bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{number}`\n🔑 OTP: `{otp}`\n👤 Service: {service} | {country}\n👤 User: {user_id}")
+            await context.bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{job_data['number']}`\n🔑 OTP: `{otp}`\nService: {job_data['service']} | {job_data['country']}\nUser: {job_data['user_id']}")
         except: pass
-
-        if service.upper() == "FACEBOOK":
+        if job_data['service'] == "FACEBOOK":
             db = load_json(BAL_FILE, {})
-            reward_bdt = 0.50
-            reward_usd = reward_bdt / 125
-            if str(user_id) in db:
-                db[str(user_id)]["balance"] += reward_usd
+            if str(job_data['user_id']) in db:
+                db[str(job_data['user_id'])]["balance"] += 0.50/125
                 save_json(BAL_FILE, db)
-                try:
-                    await context.bot.send_message(chat_id=user_id, text=f"💰 **Reward Added!**\nFacebook OTP er jonno **{reward_bdt} BDT** peyechen!", parse_mode="Markdown")
-                except: pass
-        # Job sesh
         context.job.schedule_removal()
-        return
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -97,11 +80,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
               [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
         await update.message.reply_text("👑 **APN NUMBER BOT**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
-        kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
-              [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
-              [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)],
-              [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)],
-              [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
+        kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
         await update.message.reply_text("⚠️ **বট ব্যবহারের পূর্বে চ্যানেলে জয়েন করুন**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -111,37 +90,22 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
 
     if data!="check" and not await is_joined(uid, context):
-        kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)],
-              [InlineKeyboardButton("📢 APN BACKUP", url=CH2)],
-              [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)],
-              [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)],
-              [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
+        kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
         await q.edit_message_text("❌ **আপনি চ্যানেল থেকে লিভ নিয়েছেন!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if data=="check":
         info=get_user(uid)
         if await is_joined(uid, context):
-            kb = [[InlineKeyboardButton(f"💳 Balance: ${info['balance']:.3f}", callback_data="my_status")],
-                  [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")],
-                  [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")],
-                  [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
+            kb = [[InlineKeyboardButton(f"💳 Balance: ${info['balance']:.3f}", callback_data="my_status")], [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
             await q.edit_message_text("✅ **যাচাইকরণ সফল!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         else:
-            kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)],
-                  [InlineKeyboardButton("📢 APN BACKUP", url=CH2)],
-                  [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)],
-                  [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)],
-                  [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-            await q.edit_message_text("❌ **এখনো জয়েন করেননি।**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+            await q.edit_message_text("❌ **এখনো জয়েন করেননি।**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
         return
 
     if data=="main":
         info=get_user(uid)
-        kb = [[InlineKeyboardButton(f"💳 Balance: ${info['balance']:.3f}", callback_data="my_status")],
-              [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")],
-              [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")],
-              [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
+        kb = [[InlineKeyboardButton(f"💳 Balance: ${info['balance']:.3f}", callback_data="my_status")], [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
         await q.edit_message_text("👑 **APN NUMBER BOT**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data=="my_status":
@@ -152,30 +116,23 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today = sum(1 for r in reqs if datetime.fromisoformat(r).date()==now.date())
         last7 = sum(1 for r in reqs if datetime.fromisoformat(r) >= now - timedelta(days=7))
         last30 = sum(1 for r in reqs if datetime.fromisoformat(r) >= now - timedelta(days=30))
-        lifetime = len(reqs)
         taka = user['balance']*125
-        txt = f"━━━━━━━━━━━━━━━━━━━━\n👑 **MY STATUS**\n━━━━━━━━━━━━━━━━━━━━\n🆔 **ID:** `{uid}`\n💳 **Balance:** {user['balance']:.3f} $ ({taka:.2f} ৳)\n━━━━━━━━━━━━━━━━━━━━\n👑 **My Statistics**\n┣ Today: {today}\n┣ Last 7 Days: {last7}\n┣ Last 30 Days: {last30}\n┗ Lifetime: {lifetime}\n━━━━━━━━━━━━━━━━━━━━\n🦀 **Referrals:** {user.get('ref',0)}\n━━━━━━━━━━━━━━━━━━━━"
-        kb = [[InlineKeyboardButton("🧚 Refer", callback_data="refer")],[InlineKeyboardButton("📱 Connect WhatsApp", url=SUPPORT_ID)],[InlineKeyboardButton("❌ CLOSE", callback_data="main")]]
+        txt = f"👑 **MY STATUS**\n🆔 ID: `{uid}`\n💳 Balance: {user['balance']:.3f} $ ({taka:.2f} ৳)\nToday: {today} | 7D: {last7} | 30D: {last30}"
+        kb = [[InlineKeyboardButton("❌ CLOSE", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data=="live":
         tr = load_json(TRAFFIC_FILE, {})
         total = sum(tr.values()) if tr else 41
-        if not tr: tr = {"MADAGASCAR 🇲🇬": 41}
-        sorted_c = sorted(tr.items(), key=lambda x: x[1], reverse=True)
-        now_str = datetime.now().strftime("%H:%M:%S")
-        txt = f"🔴 **Live Traffic**\n\n👤 **Window:** Last 30 minutes\n🔘 **Results Sent:** {total}\n🔝 **Top Country:** {sorted_c[0][0]} 📱\n\n🌐 **Top Countries:**\n"
-        for i, (c, cnt) in enumerate(sorted_c[:3]):
-            perc = (cnt/total*100) if total else 0
-            txt += f"{i+1}. {c} ➡️ {perc:.1f}% 📱\n"
-        txt += f"\n⏰ **Last Update:** {now_str}"
+        if not tr: tr = {"MADAGASCAR": 41}
+        txt = f"🔴 **Live Traffic**\nResults Sent: {total}\nTop: MADAGASCAR 🇲🇬"
         kb = [[InlineKeyboardButton("🔄 Refresh", callback_data="live")],[InlineKeyboardButton("❌ CLOSE", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data=="withdrawal":
         info=get_user(uid)
-        txt = f"━━━━━━━━━━━━━━━━━━━━\n《 🔮 **WITHDRAWAL** 》\n━━━━━━━━━━━━━━━━━━━━\n🔥 **Total Otp:** {info['total']}\n━━━━━━━━━━━━━━━━━━━━\n🙋 **Total Reffer :** {info.get('ref',0)}\n━━━━━━━━━━━━━━━━━━━━\n💰 **BALANCE:** ${info['balance']:.3f}\n━━━━━━━━━━━━━━━━━━━━\n🧪 **MINIMUM:** $0.02\n━━━━━━━━━━━━━━━━━━━━\n**SELECT METHOD:**"
-        kb = [[InlineKeyboardButton("🕊️ Bkash", callback_data="wd_bkash")],[InlineKeyboardButton("🟡 Binance", callback_data="wd_binance")],[InlineKeyboardButton("❌ Cancel", callback_data="main")]]
+        txt = f"💰 **BALANCE:** ${info['balance']:.3f}\nMINIMUM: $0.02"
+        kb = [[InlineKeyboardButton("🕊️ Bkash", callback_data="wd_bkash")],[InlineKeyboardButton("❌ Cancel", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data=="services":
@@ -184,41 +141,43 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("🔹 **Please select a service:**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data.startswith("s_"):
-        context.user_data['service']=data[2:]
+        service = data[2:]
+        context.user_data['service']=service
+        if service == "TELEGRAM":
+            await q.edit_message_text(f"**{service} SERVICE**\n\n❌ **Stock Nai!**\nTelegram ekhon stock e nai.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]), parse_mode="Markdown")
+            return
+        # Country button - emoji dekhabe kintu callback emoji chara
         countries = get_all_countries()
-        kb=[]; row=[]
-        for c in countries:
-            row.append(InlineKeyboardButton(c, callback_data=f"c_{c}"))
-            if len(row)==1: kb.append(row); row=[]
-        if row: kb.append(row)
+        kb = []
+        for code in countries:
+            display = get_display_name(code)
+            kb.append([InlineKeyboardButton(display, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩️ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: **{context.user_data['service']}**\nDesh select koro:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        await q.edit_message_text(f"Service: **{service}**\nDesh select koro:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data.startswith("c_"):
-        country=data[2:]
-        service=context.user_data.get('service','FACEBOOK')
-        order = create_order(service, country)
+        country_code = data[2:] # MADAGASCAR
+        service = context.user_data.get('service','FACEBOOK')
+        display = get_display_name(country_code)
+        await q.edit_message_text(f"⏳ **Number nichhi {display} er jonno...**")
+
+        order = create_order(service, country_code)
         if not order:
-            await q.edit_message_text("❌ Number stock sesh! Onno desh try koro ba 1 min por abar try koro.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")]]))
+            await q.edit_message_text(f"❌ **Stock Sesh!**\nRange 26134 e number nai.\nNP panel e check koro.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]), parse_mode="Markdown")
             return
+
         num1 = order['number']
         order_id = order['id']
-        add_request(uid, country)
-        context.job_queue.run_repeating(check_otp_job, interval=5, first=5, last=180, data={"order_id": order_id, "user_id": uid, "number": num1, "service": service, "country": country}, name=f"otp_{order_id}_{uid}")
+        add_request(uid, display)
+        context.job_queue.run_repeating(check_otp_job, interval=5, first=5, last=180, data={"order_id": order_id, "user_id": uid, "number": num1, "service": service, "country": display}, name=f"otp_{order_id}_{uid}")
 
-        kb = [
-            [InlineKeyboardButton(f"📋 {num1} - Tap to Copy", callback_data=f"copy_{num1}")],
-            [InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")],
-            [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country}")],
-            [InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)]
-        ]
-        txt = f"**YOUR {country} {service} NUMBER**\n\n🎉 **আপনার {country} এর {service} নাম্বার প্রস্তুত:**\n\n`{num1}`\n\n⏳ **OTP er jonno opekkha korchi... OTP asle auto bot e + group e chole asbe.**\n\n💡 Facebook hole per OTP **0.50 BDT** paben."
+        kb = [[InlineKeyboardButton(f"📋 {num1}", callback_data=f"copy_{num1}")], [InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)]]
+        txt = f"**YOUR {display} {service} NUMBER**\n\n`{num1}`\n\n⏳ **OTP wait korchi...**"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     elif data.startswith("copy_"):
         num = data[5:]
-        await q.answer()
-        await context.bot.send_message(chat_id=uid, text=f"📋 **Copy this number:**\n\n`{num}`", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=uid, text=f"📋 **Copy:**\n\n`{num}`", parse_mode="Markdown")
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
