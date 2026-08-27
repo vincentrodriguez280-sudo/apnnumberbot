@@ -3,20 +3,14 @@ import re
 
 API_KEY = "NP-7ZWSHJTSSN4LP3HX"
 BASE_URL = "https://npsmsnetwork.com/api/index.php?route=user"
-HEADERS = {
-    "mauthapi": API_KEY,
-    "Content-Type": "application/json"
-}
+HEADERS = {"mauthapi": API_KEY, "Content-Type": "application/json"}
 
-# ===== TUMI SUDU EKHANE RANGE ADD KORBA =====
 RANGE_MAP = {
-    "MADAGASCAR": "26134", # 26134XXX = Madagascar Facebook
+    "MADAGASCAR": "26134",
 }
-# Desh er sundor nam (button e dekhabe)
 DISPLAY_NAME = {
     "MADAGASCAR": "MADAGASCAR 🇲🇬",
 }
-# ===========================================
 
 def get_all_countries():
     return list(RANGE_MAP.keys())
@@ -24,25 +18,22 @@ def get_all_countries():
 def get_display_name(code):
     return DISPLAY_NAME.get(code, code)
 
-def get_range_id(country_code):
-    # country_code = MADAGASCAR (emoji chara)
-    return RANGE_MAP.get(country_code.strip().upper(), "26134")
+def get_range_id(code):
+    return RANGE_MAP.get(code.upper(), "26134")
 
 def create_order(service, country_code):
-    range_id = get_range_id(country_code).replace("XXX","").strip()
+    range_id = get_range_id(country_code)
     try:
         payload = {"action": "getnum", "range": range_id}
         r = requests.post(BASE_URL, headers=HEADERS, json=payload, timeout=20)
-        print(f"[NP] {country_code} -> {range_id} -> {r.text}")
+        print(f"NP API: {r.text}")
         data = r.json()
         if data.get("meta", {}).get("code") == 200:
             full = data["data"]["full_number"]
             return {"number": full, "id": full}
-        else:
-            print(f"[NP] Error: {data}")
-            return None
+        return None
     except Exception as e:
-        print(f"[NP] Exception: {e}")
+        print(f"NP Error: {e}")
         return None
 
 def get_otp(order_id):
