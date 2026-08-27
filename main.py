@@ -185,21 +185,18 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 asyncio.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, display))
                 await asyncio.sleep(1)
         if not nums:
-            await q.edit_message_text(f"❌ **Stock Sesh! {display}**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}"), InlineKeyboardButton("🔙 BACK", callback_data="main")]]))
+            await q.edit_message_text(f"❌ **Stock Sesh! {display}**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
-        kb = []
-        for o in nums:
-            kb.append([InlineKeyboardButton(f"📋 {o['number']} - Tap to Copy", callback_data=f"copy_{o['number']}")])
-        kb.append([InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")])
-        kb.append([InlineKeyboardButton("🔄 Change Number (3 New)", callback_data=f"c_{country_code}")])
-        kb.append([InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)])
+        kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")],
+              [InlineKeyboardButton("🔄 Change Number (3 New)", callback_data=f"c_{country_code}")],
+              [InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)]]
         txt = f"**YOUR {display} {service} 3 NUMBER**\n\n"
         for o in nums:
             txt += f"`{o['number']}`\n"
-        txt += f"\n⏳ **OTP wait korchi... 3 ta number er OTP auto asbe.**"
+        txt += f"\n⏳ **Uporer number e click korlei copy hobe. OTP auto asbe.**"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
-
+        
     if data.startswith("copy_"):
         num = data[5:]
         await context.bot.send_message(chat_id=uid, text=f"📋 **Copy:**\n\n`{num}`", parse_mode="Markdown")
