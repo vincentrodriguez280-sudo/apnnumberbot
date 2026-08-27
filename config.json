@@ -1,0 +1,6 @@
+{
+  "PANEL_TYPE": "demo",
+  "PANEL_URL": "https://your-panel.com/api",
+  "PANEL_KEY": "YOUR_API_KEY",
+  "OTP_GROUP_ID": "@YOUR_OTP_GROUP"
+}
