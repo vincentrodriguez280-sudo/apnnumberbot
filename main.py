@@ -12,7 +12,7 @@ BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
 
-SERVICES = ["FACEBOOK", "IMO", "TELEGRAM", "VK", "WHATSAPP"]
+SERVICES = ["FACEBOOK", "WHATSAPP", "TELEGRAM"]
 # Ekhon desh er list auto panel.py theke asbe
 COUNTRIES = get_all_countries()
 
@@ -111,10 +111,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
 
     if data!="check" and not await is_joined(uid, context):
-        kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
-              [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
-              [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)],
-              [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)],
+        kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)],
+              [InlineKeyboardButton("📢 APN BACKUP", url=CH2)],
+              [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)],
+              [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)],
               [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
         await q.edit_message_text("❌ **আপনি চ্যানেল থেকে লিভ নিয়েছেন!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
@@ -128,10 +128,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                   [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
             await q.edit_message_text("✅ **যাচাইকরণ সফল!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         else:
-            kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)],
-                  [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)],
-                  [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)],
-                  [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)],
+            kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)],
+                  [InlineKeyboardButton("📢 APN BACKUP", url=CH2)],
+                  [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)],
+                  [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)],
                   [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
             await q.edit_message_text("❌ **এখনো জয়েন করেননি।**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
