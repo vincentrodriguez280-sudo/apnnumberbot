@@ -10,6 +10,8 @@ CH1 = "https://t.me/ApnNumber"
 CH2 = "https://t.me/+3N7St38N__ZkMTZl"
 BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
+OTP_GROUP_ID = "@APNOTP"
+CHANNEL_ID = "@ApnNumber"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
 BAL_FILE = "balances.json"
@@ -17,6 +19,16 @@ TRAFFIC_FILE = "traffic.json"
 SUCCESS_FILE = "success_traffic.json"
 RANGES_FILE = "ranges.json"
 ADMIN_ID = 8166317954
+
+# ===== YOUR NEW DESIGN SETTINGS =====
+GROUP_NAME_TITLE = "APN OTP GROUP"
+COMMUNITY_URL = "https://t.me/APNOTP"
+NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
+FLAGS = {
+    "NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹",
+    "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "SIERRA_LEONE_2": "🇸🇱",
+    "USA": "🇺🇸", "INDONESIA": "🇮🇩", "MYANMAR": "🇲🇲"
+}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -52,6 +64,39 @@ def add_success(country):
     tr[country] = tr.get(country,0)+1
     save_json(SUCCESS_FILE, tr)
 
+def mask_number(num):
+    n = num.replace(" ", "").replace("+", "").strip()
+    if len(n) <= 6:
+        return "+" + n
+    # +5093XXXXXX224 style
+    return f"+{n[:4]}XXXXXX{n[-3:]}"
+
+def format_rocket_style(country_code, full_number, service, otp_code):
+    clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
+    country_name = clean.replace("_", " ").title()
+    flag = FLAGS.get(clean, "🌍")
+    masked = mask_number(full_number)
+    service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB"] else "WhatsApp"
+    # OTP 333069 -> 333-069
+    if len(otp_code) >= 6 and "-" not in otp_code:
+        otp_show = f"{otp_code[:3]}-{otp_code[3:]}"
+    else:
+        otp_show = otp_code
+
+    text = (
+        f"{GROUP_NAME_TITLE}\n"
+        f"🎉 NEW OTP RECEIVED 🎉\n\n"
+        f"🌍 Country: {country_name} {flag}\n"
+        f"📱 Number: {masked}\n"
+        f"🧰 Service: {service_display}\n"
+        f"🔍 OTP: {otp_show}"
+    )
+    keyboard = [[
+        InlineKeyboardButton("🚀 Community", url=COMMUNITY_URL),
+        InlineKeyboardButton("📱 Number", url=NUMBER_BOT_URL)
+    ]]
+    return text, InlineKeyboardMarkup(keyboard)
+
 async def is_joined(user_id, context):
     for ch in MUST_JOIN:
         try:
@@ -60,30 +105,34 @@ async def is_joined(user_id, context):
         except: return False
     return True
 
-async def otp_watcher(bot, order_id, user_id, number, service, country):
+async def otp_watcher(bot, order_id, user_id, number, service, country_code):
     for _ in range(50):
         await asyncio.sleep(5)
         otp = await asyncio.to_thread(get_otp, order_id)
         if otp:
-            try: await bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 `{number}`\n🔑 OTP: `{otp}`\n🌍 {country} | {service}", parse_mode="Markdown")
+            text, markup = format_rocket_style(country_code, number, service, otp)
+            # 1. User inbox e
+            try: await bot.send_message(chat_id=user_id, text=text, reply_markup=markup)
             except: pass
-            try: await bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{number}`\n🔑 `{otp}`\n🌍 {country} | {service}\n👤 `{user_id}`", parse_mode="Markdown")
+            # 2. OTP Group e same design
+            try: await bot.send_message(chat_id=OTP_GROUP_ID, text=text, reply_markup=markup)
             except: pass
-            try: await bot.send_message(chat_id="@ApnNumber", text=f"✅ OTP: `{otp}`\n📞 `{number}`\n🌍 {country}")
+            # 3. Channel e optional
+            try: await bot.send_message(chat_id=CHANNEL_ID, text=text, reply_markup=markup)
             except: pass
+
             db = load_json(BAL_FILE, {})
             uid=str(user_id)
             if uid in db:
                 db[uid]["balance"]+=0.50
                 save_json(BAL_FILE, db)
-            add_success(country)
+            add_success(country_code)
             return
 
 # --- ADMIN EASY RANGE SYSTEM ---
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     try:
-        # /add FB MONTENEGRO 38267437402
         service = context.args[0].upper()
         name = context.args[1].upper()
         rid = context.args[2]
@@ -93,9 +142,9 @@ async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service not in data: data[service] = {}
         data[service][name] = rid
         save_json(RANGES_FILE, data)
-        await update.message.reply_text(f"✅ Added!\n\nService: {service}\nName: {name}\nRange: {rid}\n\nButton e ekhon asbe.")
+        await update.message.reply_text(f"✅ Added!\n\nService: {service}\nName: {name}\nRange: {rid}")
     except:
-        await update.message.reply_text("❌ Use:\n`/add FB MONTENEGRO 38267437402`\n`/add WS NEPAL 977`\n\n`/del FB MONTENEGRO`\n`/list`", parse_mode="Markdown")
+        await update.message.reply_text("❌ Use:\n`/add FB MONTENEGRO 38267437402`")
 
 async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -108,11 +157,11 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if name in data.get(service, {}):
             del data[service][name]
             save_json(RANGES_FILE, data)
-            await update.message.reply_text(f"🗑 Deleted {name} from {service}")
+            await update.message.reply_text(f"🗑 Deleted {name}")
         else:
             await update.message.reply_text("❌ Range not found")
     except:
-        await update.message.reply_text("❌ Use: `/del FB MONTENEGRO`", parse_mode="Markdown")
+        await update.message.reply_text("❌ Use: `/del FB MONTENEGRO`")
 
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -228,7 +277,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if order:
                 nums.append(order)
                 add_request(uid, display)
-                asyncio.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, display))
+                asyncio.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
                 await asyncio.sleep(1)
         if not nums:
             await q.edit_message_text(f"❌ **Stock Sesh! {display}**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
