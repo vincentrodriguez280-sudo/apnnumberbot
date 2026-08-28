@@ -7,9 +7,11 @@ HEADERS = {"mauthapi": API_KEY, "Content-Type": "application/json"}
 
 RANGE_MAP = {
     "MADAGASCAR": "26134",
+    "MONTENEGRO_382661": "382661",
 }
 DISPLAY_NAME = {
     "MADAGASCAR": "MADAGASCAR 🇲🇬",
+    "MONTENEGRO_382661": "MONTENEGRO 382661XXX 🇲🇪",
 }
 
 def get_all_countries():
