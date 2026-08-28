@@ -11,10 +11,10 @@ CH2 = "https://t.me/+3N7St38N__ZkMTZl"
 BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
-SERVICES = ["FACEBOOK", "WHATSAPP", "TELEGRAM"]
+SERVICES = ["FACEBOOK", "WHATSAPP"]
 BAL_FILE = "balances.json"
 TRAFFIC_FILE = "traffic.json"
-ADMIN_ID = 8166317954 # tomar ID
+ADMIN_ID = 8166317954
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -54,7 +54,7 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country):
-    for _ in range(36):
+    for _ in range(40):
         await asyncio.sleep(5)
         otp = await asyncio.to_thread(get_otp, order_id)
         if otp:
@@ -64,7 +64,9 @@ async def otp_watcher(bot, order_id, user_id, number, service, country):
             try:
                 await bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{number}`\n🔑 OTP: `{otp}`\nService: {service} | {country}\nUser: {user_id}")
             except: pass
-            # Balance add 0.50
+            try:
+                await bot.send_message(chat_id="@ApnNumber", text=f"📞 `{number}`\n🔑 OTP: `{otp}`\nService: {service}")
+            except: pass
             db = load_json(BAL_FILE, {})
             uid=str(user_id)
             if uid in db:
@@ -82,10 +84,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
               [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
         if uid == ADMIN_ID:
             kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-        await update.message.reply_text("👑 **APN NUMBER BOT**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        await update.message.reply_text("👑 **APN NUMBER BOT**\n\nProfessional OTP Service", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
     else:
         kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await update.message.reply_text("⚠️ **বট ব্যবহারের পূর্বে চ্যানেলে জয়েন করুন**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        await update.message.reply_text("⚠ **Bot use korar age channel e join korun**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -95,7 +97,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data!= "check" and not await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await q.edit_message_text("❌ **আপনি চ্যানেল থেকে লিভ নিয়েছেন!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        await q.edit_message_text("❌ **Channel e join koren ni!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if data == "check":
@@ -103,9 +105,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await is_joined(uid, context):
             kb = [[InlineKeyboardButton(f"💳 Balance: ${info['balance']:.3f}", callback_data="my_status")], [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
             if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-            await q.edit_message_text("✅ **যাচাইকরণ সফল!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+            await q.edit_message_text("✅ **Verification Successful!**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         else:
-            await q.edit_message_text("❌ **এখনো জয়েন করেননি।**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
+            await q.edit_message_text("❌ **Join hoy ni.**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
         return
 
     if data == "main":
@@ -117,14 +119,14 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "my_status":
         info = get_user(uid)
-        txt = f"👑 **MY STATUS**\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total Number: {info['total']}\n👥 Refer: {info['ref']}\n\n💰 **Per OTP 0.50 BDT**"
+        txt = f"👑 **MY STATUS**\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total Number: {info['total']}\n\nPer OTP 0.50 BDT"
         kb = [[InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if data == "withdrawal":
         info = get_user(uid)
-        txt = f"💰 **WITHDRAWAL**\n\n💳 Balance: ${info['balance']:.3f}\n\nMinimum Withdraw 10 BDT\n\nWithdraw korte SUPPORT e message din"
+        txt = f"💰 **WITHDRAWAL**\n\n💳 Balance: ${info['balance']:.3f}\n\nMinimum Withdraw 10 BDT\n\nWithdraw er jonno SUPPORT e message din"
         kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
@@ -159,23 +161,21 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("s_"):
         service = data[2:]
         context.user_data['service'] = service
-        if service == "TELEGRAM":
-            await q.edit_message_text(f"**{service} SERVICE**\n\n❌ **Stock Nai!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]), parse_mode="Markdown")
-            return
-        countries = get_all_countries()
+        # FIXED: service onujayi country list
+        countries = get_all_countries(service)
         kb = []
         for code in countries:
             display = get_display_name(code)
             kb.append([InlineKeyboardButton(display, callback_data=f"c_{code}")])
-        kb.append([InlineKeyboardButton("↩️ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: **{service}**\nDesh select koro:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
+        await q.edit_message_text(f"Service: **{service}**\nCountry select korun:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if data.startswith("c_"):
         country_code = data[2:]
         service = context.user_data.get('service', 'FACEBOOK')
         display = get_display_name(country_code)
-        await q.edit_message_text(f"⏳ **3 ta Number nichhi {display} er jonno...**")
+        await q.edit_message_text(f"⏳ **{display} er jonno 3 ta number nicchi...**")
         nums = []
         for i in range(3):
             order = await asyncio.to_thread(create_order, service, country_code)
@@ -189,17 +189,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")],
               [InlineKeyboardButton("🔄 Change Number (3 New)", callback_data=f"c_{country_code}")],
-              [InlineKeyboardButton("🛡️ OTP Group", url=OTP_GROUP)]]
+              [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
         txt = f"**YOUR {display} {service} 3 NUMBER**\n\n"
         for o in nums:
             txt += f"`{o['number']}`\n"
-        txt += f"\n⏳ **Uporer number e click korlei copy hobe. OTP auto asbe.**"
+        txt += f"\n⏳ **OTP auto asbe. OTP Group e o post hobe.**"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-        return
-        
-    if data.startswith("copy_"):
-        num = data[5:]
-        await context.bot.send_message(chat_id=uid, text=f"📋 **Copy:**\n\n`{num}`", parse_mode="Markdown")
         return
 
 app = ApplicationBuilder().token(TOKEN).build()
