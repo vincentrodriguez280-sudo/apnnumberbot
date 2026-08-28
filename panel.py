@@ -1,17 +1,19 @@
 import requests
 import re
 
-API_KEY = "NP-7ZWSHJTSSN4LP3HX"
+API_KEY = "11cb15ff78ee0371"
 BASE_URL = "https://npsmsnetwork.com/api/index.php?route=user"
 HEADERS = {"mauthapi": API_KEY, "Content-Type": "application/json"}
 
 RANGE_MAP = {
     "MADAGASCAR": "26134",
     "MONTENEGRO_382661": "382661",
+    "NEPAL_977X97": "97797",
 }
 DISPLAY_NAME = {
     "MADAGASCAR": "MADAGASCAR 🇲🇬",
     "MONTENEGRO_382661": "MONTENEGRO 382661XXX 🇲🇪",
+    "NEPAL_977X97": "NEPAL 977X97 🇳🇵",
 }
 
 def get_all_countries():
