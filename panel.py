@@ -1,14 +1,16 @@
 import requests
 import re
 
-API_KEY = "11cb15ff78ee0371"
-BASE_URL = "https://npsmsnetwork.com/api/index.php?route=user"
-HEADERS = {"mauthapi": API_KEY, "Content-Type": "application/json"}
+API_KEY = "4d7e8a90d19b1dc5"
+BASE_URL_ALLOCATE = "https://yesms.online/api/allocate_number"
+BASE_URL_OTP = "https://yesms.online/api/user_numbers"
+HEADERS = {"authkey": API_KEY, "Content-Type": "application/json"}
 
+# Tomar Range Gula
 RANGE_MAP = {
     "MADAGASCAR": "26134",
     "MONTENEGRO_382661": "382661",
-    "NEPAL_977X97": "97797",
+    "NEPAL_977X97": "977X97",
 }
 DISPLAY_NAME = {
     "MADAGASCAR": "MADAGASCAR 🇲🇬",
@@ -28,30 +30,29 @@ def get_range_id(code):
 def create_order(service, country_code):
     range_id = get_range_id(country_code)
     try:
-        payload = {"action": "getnum", "range": range_id}
-        r = requests.post(BASE_URL, headers=HEADERS, json=payload, timeout=20)
-        print(f"NP API: {r.text}")
+        payload = {"range_id": range_id}
+        r = requests.post(BASE_URL_ALLOCATE, headers=HEADERS, json=payload, timeout=20)
+        print(f"YESMS API: {r.text}")
         data = r.json()
-        if data.get("meta", {}).get("code") == 200:
+        if data.get("success") == True:
             full = data["data"]["full_number"]
             return {"number": full, "id": full}
         return None
     except Exception as e:
-        print(f"NP Error: {e}")
+        print(f"YESMS Error: {e}")
         return None
 
 def get_otp(order_id):
     try:
-        num = order_id.replace("+","").replace(" ","")
-        r = requests.get(f"{BASE_URL}?action=otp", headers=HEADERS, timeout=15)
+        num = order_id.replace("+","").replace(" ","").replace("-","")
+        r = requests.get(BASE_URL_OTP, headers={"authkey": API_KEY}, timeout=15)
         data = r.json()
-        if data.get("meta", {}).get("code") == 200:
-            for otp_entry in reversed(data.get("data", {}).get("otps", [])):
-                entry_num = str(otp_entry.get("number","")).replace("+","")
-                if entry_num == num or num in entry_num:
-                    msg = otp_entry.get("message","")
-                    m = re.search(r'\b(\d{3,8})\b', msg)
-                    return m.group(1) if m else msg
+        if data.get("success") == True:
+            for entry in data.get("logs", []):
+                entry_num = str(entry.get("number","")).replace("+","").replace(" ","").replace("-","")
+                if entry_num == num or num in entry_num or entry_num in num:
+                    return entry.get("otp_code") or entry.get("full_message")
         return None
-    except:
+    except Exception as e:
+        print(f"YESMS OTP Error: {e}")
         return None
