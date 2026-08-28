@@ -14,6 +14,7 @@ SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
 BAL_FILE = "balances.json"
 TRAFFIC_FILE = "traffic.json"
+SUCCESS_FILE = "success_traffic.json"
 ADMIN_ID = 8166317954
 
 def load_json(f, default):
@@ -45,6 +46,11 @@ def add_request(uid, country):
     tr[country] = tr.get(country,0)+1
     save_json(TRAFFIC_FILE, tr)
 
+def add_success(country):
+    tr = load_json(SUCCESS_FILE, {})
+    tr[country] = tr.get(country,0)+1
+    save_json(SUCCESS_FILE, tr)
+
 async def is_joined(user_id, context):
     for ch in MUST_JOIN:
         try:
@@ -54,24 +60,30 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country):
-    for _ in range(40):
+    for _ in range(50):
         await asyncio.sleep(5)
         otp = await asyncio.to_thread(get_otp, order_id)
         if otp:
+            # 1. User inbox e
             try:
-                await bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 Number: `{number}`\n🔑 OTP: `{otp}`\n🌍 Service: {service}", parse_mode="Markdown")
+                await bot.send_message(chat_id=user_id, text=f"✅ **OTP Received!**\n\n📞 Number: `{number}`\n🔑 OTP: `{otp}`\n🌍 {country} | {service}", parse_mode="Markdown")
             except: pass
+            # 2. OTP Group e
             try:
-                await bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n📞 `{number}`\n🔑 OTP: `{otp}`\nService: {service} | {country}\nUser: {user_id}")
+                await bot.send_message(chat_id="@APNOTP", text=f"✅ **OTP SUCCESS**\n\n📞 `{number}`\n🔑 OTP: `{otp}`\n🌍 {country} | {service}\n👤 User: `{user_id}`", parse_mode="Markdown")
             except: pass
+            # 3. Bot channel e o
             try:
-                await bot.send_message(chat_id="@ApnNumber", text=f"📞 `{number}`\n🔑 OTP: `{otp}`\nService: {service}")
+                await bot.send_message(chat_id="@ApnNumber", text=f"✅ OTP: `{otp}`\n📞 `{number}`\n🌍 {country}")
             except: pass
+
+            # Balance + Success Count
             db = load_json(BAL_FILE, {})
             uid=str(user_id)
             if uid in db:
                 db[uid]["balance"]+=0.50
                 save_json(BAL_FILE, db)
+            add_success(country)
             return
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -119,25 +131,34 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "my_status":
         info = get_user(uid)
-        txt = f"👑 **MY STATUS**\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total Number: {info['total']}\n\nPer OTP 0.50 BDT"
+        txt = f"👑 **MY STATUS**\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total Number: {info['total']}"
         kb = [[InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if data == "withdrawal":
         info = get_user(uid)
-        txt = f"💰 **WITHDRAWAL**\n\n💳 Balance: ${info['balance']:.3f}\n\nMinimum Withdraw 10 BDT\n\nWithdraw er jonno SUPPORT e message din"
+        txt = f"💰 **WITHDRAWAL**\n\n💳 Balance: ${info['balance']:.3f}\n\nMinimum 10 BDT\nWithdraw er jonno SUPPORT e bolun"
         kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
     if data == "live":
-        tr = load_json(TRAFFIC_FILE, {})
-        txt = "📊 **LIVE TRAFFIC**\n\n"
-        if not tr: txt+="No traffic yet"
+        req_tr = load_json(TRAFFIC_FILE, {})
+        succ_tr = load_json(SUCCESS_FILE, {})
+        txt = "📊 **LIVE TRAFFIC - OTP GROUP REPORT**\n\n"
+        txt += "🔥 **Kon desh theke OTP besi asche:**\n"
+        if not succ_tr:
+            txt += "No OTP success yet\n\n"
         else:
-            for c, v in sorted(tr.items(), key=lambda x: x[1], reverse=True)[:20]:
-                txt+=f"{c}: {v} requests\n"
+            for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:15]:
+                txt+=f"✅ {c}: {v} OTP\n"
+        txt += "\n📞 **Total Request:**\n"
+        if not req_tr:
+            txt+="No request yet"
+        else:
+            for c, v in sorted(req_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
+                txt+=f"📞 {c}: {v} req\n"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
@@ -145,9 +166,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "admin":
         if uid!= ADMIN_ID: return
         db = load_json(BAL_FILE, {})
+        succ = load_json(SUCCESS_FILE, {})
         total_users = len(db)
         total_req = sum([v['total'] for v in db.values()])
-        txt = f"👑 **ADMIN PANEL**\n\n👥 Total Users: {total_users}\n📞 Total Requests: {total_req}"
+        total_succ = sum(succ.values())
+        txt = f"👑 **ADMIN PANEL**\n\n👥 Users: {total_users}\n📞 Requests: {total_req}\n✅ Success OTP: {total_succ}"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
@@ -161,7 +184,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("s_"):
         service = data[2:]
         context.user_data['service'] = service
-        # FIXED: service onujayi country list
         countries = get_all_countries(service)
         kb = []
         for code in countries:
@@ -193,7 +215,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = f"**YOUR {display} {service} 3 NUMBER**\n\n"
         for o in nums:
             txt += f"`{o['number']}`\n"
-        txt += f"\n⏳ **OTP auto asbe. OTP Group e o post hobe.**"
+        txt += f"\n⏳ **OTP auto asbe Inbox + OTP Group e.**"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
