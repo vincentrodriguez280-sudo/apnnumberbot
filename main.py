@@ -18,12 +18,12 @@ BAL_FILE = "balances.json"
 TRAFFIC_FILE = "traffic.json"
 SUCCESS_FILE = "success_traffic.json"
 RANGES_FILE = "ranges.json"
-ADMIN_ID = 8166317954
+ADMIN_ID = 1853202569 # UPDATED
 
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOTP"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "INDONESIA": "🇮🇩", "MYANMAR": "🇲🇲"}
+FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸"}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -31,7 +31,6 @@ def load_json(f, default):
             with open(f,'r') as fp: return json.load(fp)
         except: return default
     return default
-
 def save_json(f, data):
     with open(f,'w') as fp: json.dump(data, fp, indent=2)
 
@@ -99,13 +98,15 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
             db = load_json(BAL_FILE, {})
             uid=str(user_id)
             if uid in db:
-                db[uid]["balance"]+=0.0001
+                db[uid]["balance"]+=0.50
                 save_json(BAL_FILE, db)
             add_success(country_code)
             return
 
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id!= ADMIN_ID: return
+    if update.effective_user.id!= ADMIN_ID:
+        await update.message.reply_text(f"❌ You are not admin. Your ID: {update.effective_user.id}")
+        return
     try:
         service = context.args[0].upper()
         name = context.args[1].upper()
@@ -118,7 +119,7 @@ async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_json(RANGES_FILE, data)
         await update.message.reply_text(f"✅ Added!\n\nService: {service}\nName: {name}\nRange: {rid}")
     except:
-        await update.message.reply_text("❌ Use: /add FB MONTENEGRO 38267437402")
+        await update.message.reply_text("❌ Use:\n/add FB CAMEROON 23762")
 
 async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -135,7 +136,7 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ Range not found")
     except:
-        await update.message.reply_text("❌ Use: /del FB MONTENEGRO")
+        await update.message.reply_text("❌ Use: /del FB CAMEROON")
 
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -148,15 +149,14 @@ async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += "\n"
     await update.message.reply_text(txt, parse_mode="Markdown")
 
+async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Your ID: `{update.effective_user.id}`", parse_mode="Markdown")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     get_user(uid)
     if await is_joined(uid, context):
-        # BALANCE BUTTON REMOVED HERE
-        kb = [
-              [InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")],
-              [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")],
-              [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
+        kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
         if uid == ADMIN_ID:
             kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
         await update.message.reply_text("👑 **APN NUMBER BOT**\n\nWelcome! Please select an option below.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
@@ -179,7 +179,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
             await q.edit_message_text("✅ **Verification Successful!**\n\nWelcome back!", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         else:
-            await q.edit_message_text("❌ **Verification Failed**\n\nYou haven't joined all channels yet. Please join and try again.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
+            await q.edit_message_text("❌ **Verification Failed**\n\nYou haven't joined all channels yet.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
         return
     if data == "main":
         kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
@@ -255,9 +255,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not nums:
             await q.edit_message_text(f"❌ **Out of Stock! {display}**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
-        kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")],
-              [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")],
-              [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
+        kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
         txt = f"**YOUR {display} {service} 3 NUMBERS**\n\n"
         for o in nums:
             txt += f"`{o['number']}`\n"
@@ -267,6 +265,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
 app.add_handler(CommandHandler("del", del_range))
 app.add_handler(CommandHandler("list", list_range))
