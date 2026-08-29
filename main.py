@@ -18,12 +18,13 @@ BAL_FILE = "balances.json"
 TRAFFIC_FILE = "traffic.json"
 SUCCESS_FILE = "success_traffic.json"
 RANGES_FILE = "ranges.json"
+MAINT_FILE = "maintenance.json"
 ADMIN_ID = 1853202569
 
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOTP"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "INDONESIA": "🇮🇩", "MYANMAR": "🇲🇲"}
+FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸"}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -33,6 +34,9 @@ def load_json(f, default):
     return default
 def save_json(f, data):
     with open(f,'w') as fp: json.dump(data, fp, indent=2)
+
+def is_maintenance():
+    return load_json(MAINT_FILE, {"enabled": False}).get("enabled", False)
 
 def get_user(uid):
     db = load_json(BAL_FILE, {})
@@ -103,6 +107,22 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
             add_success(country_code)
             return
 
+async def bot_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id!= ADMIN_ID: return
+    reason = " ".join(context.args) if context.args else "Scheduled maintenance"
+    save_json(MAINT_FILE, {"enabled": True, "reason": reason})
+    await update.message.reply_text("🔴 Bot is now OFF\n\nUsers will see professional maintenance message.")
+
+async def bot_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id!= ADMIN_ID: return
+    save_json(MAINT_FILE, {"enabled": False})
+    await update.message.reply_text("🟢 Bot is now ON")
+
+async def bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id!= ADMIN_ID: return
+    status = "🔴 OFF (Maintenance)" if is_maintenance() else "🟢 ON"
+    await update.message.reply_text(f"Bot Status: {status}")
+
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
         await update.message.reply_text(f"❌ You are not admin. Your ID: {update.effective_user.id}")
@@ -154,6 +174,15 @@ async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+    if is_maintenance() and uid!= ADMIN_ID:
+        await update.message.reply_text(
+            "🛠️ System Under Maintenance\n\n"
+            "Our bot is currently undergoing scheduled maintenance to improve performance and stability.\n\n"
+            "⏳ Estimated Time: Please try again after some time.\n\n"
+            "We apologize for the inconvenience and appreciate your patience.\n\n"
+            "— APN Team"
+        )
+        return
     get_user(uid)
     if await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
@@ -169,6 +198,15 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     data = q.data
     uid = q.from_user.id
+    if is_maintenance() and uid!= ADMIN_ID:
+        await q.edit_message_text(
+            "🛠️ System Under Maintenance\n\n"
+            "Our bot is currently undergoing scheduled maintenance to improve performance and stability.\n\n"
+            "⏳ Estimated Time: Please try again after some time.\n\n"
+            "We apologize for the inconvenience and appreciate your patience.\n\n"
+            "— APN Team"
+        )
+        return
     if data!= "check" and not await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
         await q.edit_message_text("❌ Access Denied\n\nPlease join all required channels to continue.", reply_markup=InlineKeyboardMarkup(kb))
@@ -194,7 +232,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "withdrawal":
         info = get_user(uid)
-        txt = f"💰 WITHDRAWAL\n\n💳 Your Balance: ${info['balance']:.3f}\n\nMinimum withdrawal: 50 BDT"
+        txt = f"💰 WITHDRAWAL\n\n💳 Your Balance: ${info['balance']:.3f}\n\nMinimum withdrawal: 10 BDT"
         kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -216,7 +254,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if uid!= ADMIN_ID: return
         db = load_json(BAL_FILE, {})
         succ = load_json(SUCCESS_FILE, {})
-        txt = f"👑 ADMIN PANEL\n\n👥 Users: {len(db)}\n✅ Success OTP: {sum(succ.values())}\n\nCommands:\n/add FB NAME RANGE\n/del FB NAME\n/list"
+        maint = "🔴 OFF" if is_maintenance() else "🟢 ON"
+        txt = f"👑 ADMIN PANEL\n\n👥 Users: {len(db)}\n✅ Success OTP: {sum(succ.values())}\n🤖 Bot: {maint}\n\nCommands:\n/add FB NAME RANGE\n/del FB NAME\n/list\n/off - Bot off\n/on - Bot on"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -269,5 +308,8 @@ app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
 app.add_handler(CommandHandler("del", del_range))
 app.add_handler(CommandHandler("list", list_range))
+app.add_handler(CommandHandler("off", bot_off))
+app.add_handler(CommandHandler("on", bot_on))
+app.add_handler(CommandHandler("botstatus", bot_status))
 app.add_handler(CallbackQueryHandler(handle))
 app.run_polling(drop_pending_updates=True)
