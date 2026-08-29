@@ -99,7 +99,7 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
             db = load_json(BAL_FILE, {})
             uid=str(user_id)
             if uid in db:
-                db[uid]["balance"]+=0.50
+                db[uid]["balance"]+=0.0001
                 save_json(BAL_FILE, db)
             add_success(country_code)
             return
