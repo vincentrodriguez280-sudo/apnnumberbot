@@ -5,13 +5,13 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from panel import create_order, get_otp, get_all_countries, get_display_name
 
 TOKEN = os.getenv("BOT_TOKEN")
-MUST_JOIN = ["@ApnNumber", "@APNOTP"]
+MUST_JOIN = ["@APNOfficial", "@APNOTP"]
 CH1 = "https://t.me/APNOfficial"
 CH2 = "https://t.me/+3N7St38N__ZkMTZl"
 BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 OTP_GROUP_ID = "@APNOTP"
-CHANNEL_ID = "@ApnNumber"
+CHANNEL_ID = "@APNOfficial"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
 BAL_FILE = "balances.json"
