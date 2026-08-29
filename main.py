@@ -6,7 +6,7 @@ from panel import create_order, get_otp, get_all_countries, get_display_name
 
 TOKEN = os.getenv("BOT_TOKEN")
 MUST_JOIN = ["@ApnNumber", "@APNOTP"]
-CH1 = "https://t.me/ApnNumber"
+CH1 = "https://t.me/APNOfficial"
 CH2 = "https://t.me/+3N7St38N__ZkMTZl"
 BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
