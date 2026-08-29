@@ -194,7 +194,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "withdrawal":
         info = get_user(uid)
-        txt = f"💰 WITHDRAWAL\n\n💳 Your Balance: ${info['balance']:.3f}\n\nMinimum withdrawal: 10 BDT"
+        txt = f"💰 WITHDRAWAL\n\n💳 Your Balance: ${info['balance']:.3f}\n\nMinimum withdrawal: 50 BDT"
         kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
