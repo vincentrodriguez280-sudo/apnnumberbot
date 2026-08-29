@@ -17,14 +17,12 @@ def load_ranges():
     try:
         with open(RANGES_FILE, 'r') as f:
             raw = json.load(f)
-            # Sob key ke UPPER kore nebo jate Cameroon / CAMEROON same hoy
             fixed = {"FACEBOOK": {}, "WHATSAPP": {}}
             for srv in ["FACEBOOK", "WHATSAPP"]:
                 for k, v in raw.get(srv, {}).items():
                     fixed[srv][k.upper()] = v
             return fixed
-    except Exception as e:
-        print(f"load error {e}")
+    except:
         return {"FACEBOOK": {}, "WHATSAPP": {}}
 
 def get_all_countries(service="facebook"):
