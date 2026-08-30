@@ -292,20 +292,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("❌ CLOSE", callback_data="main")])
         await q.edit_message_text("🔹 Select Service:", reply_markup=InlineKeyboardMarkup(kb))
         return
-    if data.startswith("s_"):
-        service = data[2:]
-        context.user_data['service'] = service
-        countries = get_all_countries(service)
-        if not countries:
-            await q.edit_message_text(f"❌ No ranges available for {service}!\nPlease add using /add command.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]))
-            return
-        kb = []
-        for code in countries:
-            display = get_display_name(code)
-            kb.append([InlineKeyboardButton(display, callback_data=f"c_{code}")])
-        kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: {service}\nPlease select your country:", reply_markup=InlineKeyboardMarkup(kb))
-        return
     if data.startswith("c_"):
         country_code = data[2:]
         service = context.user_data.get('service', 'FACEBOOK')
@@ -317,18 +303,23 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if order:
                 nums.append(order)
                 add_request(uid, display)
-                # FIX: Use application.create_task instead of asyncio.create_task
                 context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
                 await asyncio.sleep(1)
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
+        
+        # --- AUTO COPY FIX ---
         kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
+        
         txt = f"YOUR {display} {service} 3 NUMBERS\n\n"
         for o in nums:
-            txt += f"{o['number']}\n"
-        txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group."
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+            txt += f"`{o['number']}`\n"  # <-- backtick dile tap korle copy hobe
+        
+        txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group.\n\n"
+        txt += f"👉 Tap on number to copy!"
+
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
 app = ApplicationBuilder().token(TOKEN).build()
