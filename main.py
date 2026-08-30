@@ -1,4 +1,4 @@
-import os, json, asyncio
+import os, json, asyncio, shutil, re
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -14,17 +14,29 @@ OTP_GROUP_ID = "@APNOTP"
 CHANNEL_ID = "@APNOfficial"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
-BAL_FILE = "balances.json"
-TRAFFIC_FILE = "traffic.json"
-SUCCESS_FILE = "success_traffic.json"
-RANGES_FILE = "ranges.json"
-MAINT_FILE = "maintenance.json"
-ADMIN_ID = 1853202569
 
+# --- PERSISTENT PATH FIX (Range delete fix) ---
+BASE_DIR = "/app/data" if os.path.exists("/app/data") else "."
+BAL_FILE = os.path.join(BASE_DIR, "balances.json")
+TRAFFIC_FILE = os.path.join(BASE_DIR, "traffic.json")
+SUCCESS_FILE = os.path.join(BASE_DIR, "success_traffic.json")
+RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
+MAINT_FILE = os.path.join(BASE_DIR, "maintenance.json")
+
+# First run: copy github ranges.json to persistent storage
+if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
+    try:
+        os.makedirs(BASE_DIR, exist_ok=True)
+        shutil.copy("ranges.json", RANGES_FILE)
+        print(f"[INIT] Copied ranges.json to {RANGES_FILE}")
+    except Exception as e:
+        print(f"[INIT ERROR] {e}")
+
+ADMIN_ID = 1853202569
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOTP"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸"}
+FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "INDONESIA": "🇮🇩", "MYANMAR": "🇲🇲"}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -32,7 +44,9 @@ def load_json(f, default):
             with open(f,'r') as fp: return json.load(fp)
         except: return default
     return default
+
 def save_json(f, data):
+    os.makedirs(os.path.dirname(f) if os.path.dirname(f) else ".", exist_ok=True)
     with open(f,'w') as fp: json.dump(data, fp, indent=2)
 
 def is_maintenance():
@@ -88,30 +102,44 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
-    for _ in range(50):
+    print(f"[WATCHER START] {number} - {order_id}")
+    for i in range(60):
         await asyncio.sleep(5)
-        otp = await asyncio.to_thread(get_otp, order_id)
-        if otp:
-            text, markup = format_rocket_style(country_code, number, service, otp)
-            try: await bot.send_message(chat_id=user_id, text=text, reply_markup=markup)
-            except: pass
-            try: await bot.send_message(chat_id=OTP_GROUP_ID, text=text, reply_markup=markup)
-            except: pass
-            try: await bot.send_message(chat_id=CHANNEL_ID, text=text, reply_markup=markup)
-            except: pass
-            db = load_json(BAL_FILE, {})
-            uid=str(user_id)
-            if uid in db:
-                db[uid]["balance"]+=0.50
-                save_json(BAL_FILE, db)
-            add_success(country_code)
-            return
+        try:
+            otp = await asyncio.to_thread(get_otp, order_id)
+            if otp:
+                print(f"[OTP FOUND] {number} -> {otp}")
+                text, markup = format_rocket_style(country_code, number, service, otp)
+                try:
+                    await bot.send_message(chat_id=user_id, text=text, reply_markup=markup)
+                    print(f"[SENT USER] {user_id}")
+                except Exception as e:
+                    print(f"[FAIL USER] {e}")
+                try:
+                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text, reply_markup=markup)
+                    print(f"[SENT GROUP] {OTP_GROUP_ID}")
+                except Exception as e:
+                    print(f"[FAIL GROUP] {e} - Make bot admin!")
+                try:
+                    await bot.send_message(chat_id=CHANNEL_ID, text=text, reply_markup=markup)
+                except Exception as e:
+                    print(f"[FAIL CHANNEL] {e}")
+                db = load_json(BAL_FILE, {})
+                uid=str(user_id)
+                if uid in db:
+                    db[uid]["balance"]+=0.50
+                    save_json(BAL_FILE, db)
+                add_success(country_code)
+                return
+        except Exception as e:
+            print(f"[WATCHER ERROR] {e}")
+    print(f"[WATCHER TIMEOUT] {number}")
 
 async def bot_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     reason = " ".join(context.args) if context.args else "Scheduled maintenance"
     save_json(MAINT_FILE, {"enabled": True, "reason": reason})
-    await update.message.reply_text("🔴 Bot is now OFF\n\nUsers will see professional maintenance message.")
+    await update.message.reply_text("🔴 Bot is now OFF")
 
 async def bot_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -137,7 +165,7 @@ async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service not in data: data[service] = {}
         data[service][name] = rid
         save_json(RANGES_FILE, data)
-        await update.message.reply_text(f"✅ Added!\nService: {service}\nName: {name}\nRange: {rid}")
+        await update.message.reply_text(f"✅ Added!\nService: {service}\nName: {name}\nRange: {rid}\nSaved to {RANGES_FILE}")
     except:
         await update.message.reply_text("❌ Use: /add FB CAMEROON 23762")
 
@@ -161,7 +189,7 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-    txt = "📋 Current Ranges:\n\n"
+    txt = f"📋 Current Ranges ({RANGES_FILE}):\n\n"
     for srv, ranges in data.items():
         txt += f"{srv}:\n"
         for n, r in ranges.items():
@@ -255,7 +283,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = load_json(BAL_FILE, {})
         succ = load_json(SUCCESS_FILE, {})
         maint = "🔴 OFF" if is_maintenance() else "🟢 ON"
-        txt = f"👑 ADMIN PANEL\n\n👥 Users: {len(db)}\n✅ Success OTP: {sum(succ.values())}\n🤖 Bot: {maint}\n\nCommands:\n/add FB NAME RANGE\n/del FB NAME\n/list\n/off - Bot off\n/on - Bot on"
+        txt = f"👑 ADMIN PANEL\n\n👥 Users: {len(db)}\n✅ Success OTP: {sum(succ.values())}\n🤖 Bot: {maint}\n📂 Data: {BASE_DIR}\n\nCommands:\n/add FB NAME RANGE\n/del FB NAME\n/list\n/off - Bot off\n/on - Bot on"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -289,7 +317,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if order:
                 nums.append(order)
                 add_request(uid, display)
-                asyncio.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
+                # FIX: Use application.create_task instead of asyncio.create_task
+                context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
                 await asyncio.sleep(1)
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
