@@ -11,11 +11,9 @@ CH2 = "https://t.me/+3N7St38N__ZkMTZl"
 BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 OTP_GROUP_ID = "@APNOTP"
-CHANNEL_ID = "@APNOfficial"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
 
-# --- PERSISTENT PATH FIX (Range delete fix) ---
 BASE_DIR = "/app/data" if os.path.exists("/app/data") else "."
 BAL_FILE = os.path.join(BASE_DIR, "balances.json")
 TRAFFIC_FILE = os.path.join(BASE_DIR, "traffic.json")
@@ -23,20 +21,17 @@ SUCCESS_FILE = os.path.join(BASE_DIR, "success_traffic.json")
 RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
 MAINT_FILE = os.path.join(BASE_DIR, "maintenance.json")
 
-# First run: copy github ranges.json to persistent storage
 if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
     try:
         os.makedirs(BASE_DIR, exist_ok=True)
         shutil.copy("ranges.json", RANGES_FILE)
-        print(f"[INIT] Copied ranges.json to {RANGES_FILE}")
-    except Exception as e:
-        print(f"[INIT ERROR] {e}")
+    except: pass
 
 ADMIN_ID = 1853202569
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOTP"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "INDONESIA": "🇮🇩", "MYANMAR": "🇲🇲"}
+FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸"}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -102,8 +97,8 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
-    print(f"[WATCHER START] {number} - {order_id}")
-    for i in range(60):
+    print(f"[WATCHER START] {number}")
+    for _ in range(60):
         await asyncio.sleep(5)
         try:
             otp = await asyncio.to_thread(get_otp, order_id)
@@ -112,18 +107,12 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 text, markup = format_rocket_style(country_code, number, service, otp)
                 try:
                     await bot.send_message(chat_id=user_id, text=text, reply_markup=markup)
-                    print(f"[SENT USER] {user_id}")
                 except Exception as e:
                     print(f"[FAIL USER] {e}")
                 try:
                     await bot.send_message(chat_id=OTP_GROUP_ID, text=text, reply_markup=markup)
-                    print(f"[SENT GROUP] {OTP_GROUP_ID}")
                 except Exception as e:
-                    print(f"[FAIL GROUP] {e} - Make bot admin!")
-                try:
-                    await bot.send_message(chat_id=CHANNEL_ID, text=text, reply_markup=markup)
-                except Exception as e:
-                    print(f"[FAIL CHANNEL] {e}")
+                    print(f"[FAIL GROUP] {e}")
                 db = load_json(BAL_FILE, {})
                 uid=str(user_id)
                 if uid in db:
@@ -132,8 +121,7 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 add_success(country_code)
                 return
         except Exception as e:
-            print(f"[WATCHER ERROR] {e}")
-    print(f"[WATCHER TIMEOUT] {number}")
+            print(f"[WATCHER ERR] {e}")
 
 async def bot_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -148,12 +136,12 @@ async def bot_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
-    status = "🔴 OFF (Maintenance)" if is_maintenance() else "🟢 ON"
+    status = "🔴 OFF" if is_maintenance() else "🟢 ON"
     await update.message.reply_text(f"Bot Status: {status}")
 
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
-        await update.message.reply_text(f"❌ You are not admin. Your ID: {update.effective_user.id}")
+        await update.message.reply_text(f"❌ You are not admin. ID: {update.effective_user.id}")
         return
     try:
         service = context.args[0].upper()
@@ -165,7 +153,7 @@ async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service not in data: data[service] = {}
         data[service][name] = rid
         save_json(RANGES_FILE, data)
-        await update.message.reply_text(f"✅ Added!\nService: {service}\nName: {name}\nRange: {rid}\nSaved to {RANGES_FILE}")
+        await update.message.reply_text(f"✅ Added!\n{service} - {name} = {rid}")
     except:
         await update.message.reply_text("❌ Use: /add FB CAMEROON 23762")
 
@@ -182,14 +170,14 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_json(RANGES_FILE, data)
             await update.message.reply_text(f"🗑 Deleted {name}")
         else:
-            await update.message.reply_text("❌ Range not found")
+            await update.message.reply_text("❌ Not found")
     except:
         await update.message.reply_text("❌ Use: /del FB CAMEROON")
 
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-    txt = f"📋 Current Ranges ({RANGES_FILE}):\n\n"
+    txt = f"📋 Ranges ({BASE_DIR}):\n\n"
     for srv, ranges in data.items():
         txt += f"{srv}:\n"
         for n, r in ranges.items():
@@ -203,23 +191,16 @@ async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if is_maintenance() and uid!= ADMIN_ID:
-        await update.message.reply_text(
-            "🛠️ System Under Maintenance\n\n"
-            "Our bot is currently undergoing scheduled maintenance to improve performance and stability.\n\n"
-            "⏳ Estimated Time: Please try again after some time.\n\n"
-            "We apologize for the inconvenience and appreciate your patience.\n\n"
-            "— APN Team"
-        )
+        await update.message.reply_text("🛠 System Under Maintenance\n\nOur bot is currently undergoing scheduled maintenance.\n\n— APN Team")
         return
     get_user(uid)
     if await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
-        if uid == ADMIN_ID:
-            kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-        await update.message.reply_text("👑 APN NUMBER BOT\n\nWelcome! Please select an option below.", reply_markup=InlineKeyboardMarkup(kb))
+        if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
+        await update.message.reply_text("👑 APN NUMBER BOT\n\nWelcome!", reply_markup=InlineKeyboardMarkup(kb))
     else:
         kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await update.message.reply_text("⚠️ Access Required\n\nPlease join our official channels to use this bot.", reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text("⚠ Access Required\n\nPlease join our official channels.", reply_markup=InlineKeyboardMarkup(kb))
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -227,25 +208,19 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
     uid = q.from_user.id
     if is_maintenance() and uid!= ADMIN_ID:
-        await q.edit_message_text(
-            "🛠️ System Under Maintenance\n\n"
-            "Our bot is currently undergoing scheduled maintenance to improve performance and stability.\n\n"
-            "⏳ Estimated Time: Please try again after some time.\n\n"
-            "We apologize for the inconvenience and appreciate your patience.\n\n"
-            "— APN Team"
-        )
+        await q.edit_message_text("🛠 System Under Maintenance")
         return
     if data!= "check" and not await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await q.edit_message_text("❌ Access Denied\n\nPlease join all required channels to continue.", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text("❌ Access Denied\n\nPlease join all channels.", reply_markup=InlineKeyboardMarkup(kb))
         return
     if data == "check":
         if await is_joined(uid, context):
             kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
             if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-            await q.edit_message_text("✅ Verification Successful!\n\nWelcome back!", reply_markup=InlineKeyboardMarkup(kb))
+            await q.edit_message_text("✅ Verified!", reply_markup=InlineKeyboardMarkup(kb))
         else:
-            await q.edit_message_text("❌ Verification Failed\n\nYou haven't joined all channels yet.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
+            await q.edit_message_text("❌ Not joined yet.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
         return
     if data == "main":
         kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
@@ -254,25 +229,24 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "my_status":
         info = get_user(uid)
-        txt = f"👑 MY STATUS\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total Requests: {info['total']}"
+        txt = f"👑 MY STATUS\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total: {info['total']}"
         kb = [[InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
     if data == "withdrawal":
         info = get_user(uid)
-        txt = f"💰 WITHDRAWAL\n\n💳 Your Balance: ${info['balance']:.3f}\n\nMinimum withdrawal: 50 BDT"
+        txt = f"💰 WITHDRAWAL\n\n💳 Balance: ${info['balance']:.3f}\nMin: 50 BDT"
         kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
     if data == "live":
         req_tr = load_json(TRAFFIC_FILE, {})
         succ_tr = load_json(SUCCESS_FILE, {})
-        txt = "📊 LIVE TRAFFIC - OTP REPORT\n\n🔥 Top Performing Countries:\n"
-        if not succ_tr: txt += "No OTP received yet\n\n"
-        else:
+        txt = "📊 LIVE TRAFFIC\n\n"
+        if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:15]:
                 txt+=f"✅ {c}: {v} OTP\n"
-        txt += "\n📞 Total Requests:\n"
+        txt += "\n📞 Requests:\n"
         for c, v in sorted(req_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
             txt+=f"📞 {c}: {v}\n"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
@@ -283,7 +257,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = load_json(BAL_FILE, {})
         succ = load_json(SUCCESS_FILE, {})
         maint = "🔴 OFF" if is_maintenance() else "🟢 ON"
-        txt = f"👑 ADMIN PANEL\n\n👥 Users: {len(db)}\n✅ Success OTP: {sum(succ.values())}\n🤖 Bot: {maint}\n📂 Data: {BASE_DIR}\n\nCommands:\n/add FB NAME RANGE\n/del FB NAME\n/list\n/off - Bot off\n/on - Bot on"
+        txt = f"👑 ADMIN\nUsers: {len(db)}\nSuccess: {sum(succ.values())}\nBot: {maint}\nData: {BASE_DIR}"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -291,6 +265,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = [[InlineKeyboardButton(f"{s}", callback_data=f"s_{s}")] for s in SERVICES]
         kb.append([InlineKeyboardButton("❌ CLOSE", callback_data="main")])
         await q.edit_message_text("🔹 Select Service:", reply_markup=InlineKeyboardMarkup(kb))
+        return
+    if data.startswith("s_"):
+        service = data[2:]
+        context.user_data['service'] = service
+        countries = get_all_countries(service)
+        if not countries:
+            await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]))
+            return
+        kb = []
+        for code in countries:
+            display = get_display_name(code)
+            kb.append([InlineKeyboardButton(display, callback_data=f"c_{code}")])
+        kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
+        await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
         return
     if data.startswith("c_"):
         country_code = data[2:]
@@ -308,17 +296,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
-        
-        # --- AUTO COPY FIX ---
         kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
-        
         txt = f"YOUR {display} {service} 3 NUMBERS\n\n"
         for o in nums:
-            txt += f"`{o['number']}`\n"  # <-- backtick dile tap korle copy hobe
-        
-        txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group.\n\n"
-        txt += f"👉 Tap on number to copy!"
-
+            txt += f"`{o['number']}`\n"
+        txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group.\n👉 Tap number to copy!"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
