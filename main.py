@@ -1,4 +1,4 @@
-import os, json, asyncio, shutil, re, requests
+import os, json, asyncio, shutil, re
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -31,7 +31,7 @@ ADMIN_ID = 1853202569
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOTP"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸"}
+FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "CAMEROON": "🇨🇲"}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -98,24 +98,20 @@ async def is_joined(user_id, context):
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
     print(f"[WATCHER START] {number} {order_id}")
-    for i in range(60):
+    for i in range(180): # 15 MIN PROFESSIONAL
         await asyncio.sleep(5)
         try:
-            print(f"[CHECK {i}] {number}")
             otp = get_otp(order_id)
             if otp:
                 print(f"[OTP FOUND] {number} -> {otp}")
                 text, markup = format_rocket_style(country_code, number, service, otp)
                 try:
                     await bot.send_message(chat_id=user_id, text=text, reply_markup=markup)
-                    print("[SENT USER]")
-                except Exception as e:
-                    print(f"[FAIL USER] {e}")
+                except: pass
                 try:
                     await bot.send_message(chat_id=OTP_GROUP_ID, text=text, reply_markup=markup)
-                    print("[SENT GROUP]")
                 except Exception as e:
-                    print(f"[FAIL GROUP] {e} - Make bot admin in @APNOTP")
+                    print(f"[FAIL GROUP] {e}")
                 db = load_json(BAL_FILE, {})
                 uid=str(user_id)
                 if uid in db:
@@ -123,14 +119,13 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                     save_json(BAL_FILE, db)
                 add_success(country_code)
                 return
-            else:
-                print(f"[NO OTP {i}] {number}")
         except Exception as e:
             print(f"[WATCHER ERR] {e}")
+    print(f"[TIMEOUT] {number}")
 
 async def bot_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
-    reason = " ".join(context.args) if context.args else "Scheduled"
+    reason = " ".join(context.args) if context.args else "Scheduled maintenance"
     save_json(MAINT_FILE, {"enabled": True, "reason": reason})
     await update.message.reply_text("🔴 Bot OFF")
 
@@ -145,7 +140,9 @@ async def bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Bot Status: {status}")
 
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id!= ADMIN_ID: return
+    if update.effective_user.id!= ADMIN_ID:
+        await update.message.reply_text(f"❌ Not admin ID: {update.effective_user.id}")
+        return
     try:
         service = context.args[0].upper()
         name = context.args[1].upper()
@@ -156,7 +153,7 @@ async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service not in data: data[service] = {}
         data[service][name] = rid
         save_json(RANGES_FILE, data)
-        await update.message.reply_text(f"✅ Added {service} {name}={rid}")
+        await update.message.reply_text(f"✅ Added {service} - {name} = {rid}")
     except:
         await update.message.reply_text("❌ Use: /add FB CAMEROON 23762")
 
@@ -180,7 +177,7 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-    txt = "📋 Ranges:\n\n"
+    txt = f"📋 Ranges ({BASE_DIR}):\n\n"
     for srv, ranges in data.items():
         txt += f"{srv}:\n"
         for n, r in ranges.items():
@@ -189,21 +186,21 @@ async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(txt)
 
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"ID: {update.effective_user.id}")
+    await update.message.reply_text(f"Your ID: {update.effective_user.id}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if is_maintenance() and uid!= ADMIN_ID:
-        await update.message.reply_text("🛠 Maintenance")
+        await update.message.reply_text("🛠 System Under Maintenance")
         return
     get_user(uid)
     if await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
         if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-        await update.message.reply_text("👑 APN NUMBER BOT", reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text("👑 APN NUMBER BOT\n\nWelcome!", reply_markup=InlineKeyboardMarkup(kb))
     else:
         kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await update.message.reply_text("⚠ Join channels", reply_markup=InlineKeyboardMarkup(kb))
+        await update.message.reply_text("⚠ Access Required", reply_markup=InlineKeyboardMarkup(kb))
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -211,19 +208,19 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = q.data
     uid = q.from_user.id
     if is_maintenance() and uid!= ADMIN_ID:
-        await q.edit_message_text("🛠 Maintenance")
+        await q.edit_message_text("🛠 System Under Maintenance")
         return
     if data!= "check" and not await is_joined(uid, context):
         kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await q.edit_message_text("❌ Join channels", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text("❌ Access Denied", reply_markup=InlineKeyboardMarkup(kb))
         return
     if data == "check":
         if await is_joined(uid, context):
             kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
             if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-            await q.edit_message_text("✅ Verified", reply_markup=InlineKeyboardMarkup(kb))
+            await q.edit_message_text("✅ Verified!", reply_markup=InlineKeyboardMarkup(kb))
         else:
-            await q.edit_message_text("❌ Not joined", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
+            await q.edit_message_text("❌ Not joined yet.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
         return
     if data == "main":
         kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
@@ -232,22 +229,26 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if data == "my_status":
         info = get_user(uid)
-        txt = f"👑 STATUS\nBal: ${info['balance']:.3f}\nTotal: {info['total']}"
+        txt = f"👑 MY STATUS\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total: {info['total']}"
         kb = [[InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
     if data == "withdrawal":
         info = get_user(uid)
-        txt = f"💰 WITHDRAWAL\nBal: ${info['balance']:.3f}"
+        txt = f"💰 WITHDRAWAL\n\n💳 Balance: ${info['balance']:.3f}\nMin: 50 BDT"
         kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
     if data == "live":
         req_tr = load_json(TRAFFIC_FILE, {})
         succ_tr = load_json(SUCCESS_FILE, {})
-        txt = "📊 LIVE\n"
-        for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:15]:
-            txt+=f"✅ {c}: {v}\n"
+        txt = "📊 LIVE TRAFFIC\n\n"
+        if succ_tr:
+            for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:15]:
+                txt+=f"✅ {c}: {v} OTP\n"
+        txt += "\n📞 Requests:\n"
+        for c, v in sorted(req_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
+            txt+=f"📞 {c}: {v}\n"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -256,7 +257,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = load_json(BAL_FILE, {})
         succ = load_json(SUCCESS_FILE, {})
         maint = "🔴 OFF" if is_maintenance() else "🟢 ON"
-        txt = f"👑 ADMIN\nUsers: {len(db)}\nOTP: {sum(succ.values())}\nBot: {maint}"
+        txt = f"👑 ADMIN\nUsers: {len(db)}\nSuccess: {sum(succ.values())}\nBot: {maint}\nData: {BASE_DIR}"
         kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -277,7 +278,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             display = get_display_name(code)
             kb.append([InlineKeyboardButton(display, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: {service}", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
         return
     if data.startswith("c_"):
         country_code = data[2:]
@@ -299,7 +300,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = f"YOUR {display} {service} 3 NUMBERS\n\n"
         for o in nums:
             txt += f"`{o['number']}`\n"
-        txt += f"\n⏳ OTP will be forwarded to Inbox + Group.\n👉 Tap to copy!"
+        txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group.\n👉 Tap number to copy!"
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
