@@ -285,9 +285,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]))
             return
         kb = []
+        ranges_data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
         for code in countries:
             display = get_display_name(code)
-            kb.append([InlineKeyboardButton(display, callback_data=f"c_{code}")])
+            rid = ranges_data.get(service, {}).get(code.upper(), "")
+            btn_text = f"{display} {rid}" if rid else display
+            kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
         await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
         return
