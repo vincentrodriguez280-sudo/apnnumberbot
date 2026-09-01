@@ -68,7 +68,6 @@ def get_otp(order_id):
             if num_digits[-8:] not in en:
                 continue
             msg = str(item.get("message",""))
-            # FB: 123456 | WS: G-123456, 123-456, WhatsApp code: 123456
             m = re.search(r'G-?(\d{4,8})|(\d{3}-\d{3})|(\d{4,8})', msg)
             if m:
                 code = next((g for g in m.groups() if g), None)
