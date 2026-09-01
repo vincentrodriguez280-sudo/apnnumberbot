@@ -10,11 +10,10 @@ PANELS = {
 
 BASE_DIR = "/app/data" if os.path.exists("/app/data") else "."
 RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
-GITHUB_RANGES = "ranges.json"
 
 def load_ranges():
     data = {"FACEBOOK": {}, "WHATSAPP": {}}
-    for path in [RANGES_FILE, GITHUB_RANGES]:
+    for path in [RANGES_FILE, "ranges.json"]:
         if os.path.exists(path):
             try:
                 with open(path, 'r') as f:
@@ -26,9 +25,8 @@ def load_ranges():
     return data
 
 def get_all_countries(service="facebook"):
-    data = load_ranges()
     key = "WHATSAPP" if service.lower() in ["whatsapp","ws"] else "FACEBOOK"
-    return list(data.get(key, {}).keys())
+    return list(load_ranges().get(key, {}).keys())
 
 def get_display_name(code):
     name = code.replace("_FB","").replace("_WS","").replace("_2","").replace("_"," ").title()
@@ -46,15 +44,12 @@ def create_order(service, country_code):
     info = get_range_info(country_code)
     if not info: return None
     panel = PANELS[info["panel"]]
-    rid = info["id"]
     try:
-        headers = {"mauthapi": panel["key"], "Content-Type": "application/json"}
-        r = requests.post(panel["allocate"], headers=headers, json={"rid": rid}, timeout=20)
-        print(f"[voltx] {rid}: {r.text[:1000]}")
-        data = r.json()
-        if data.get("meta", {}).get("code") == 200 and data.get("data"):
-            full = data["data"]["full_number"]
-            return {"number": full, "id": f"{info['panel']}|{full}"}
+        r = requests.post(panel["allocate"], headers={"mauthapi": panel["key"], "Content-Type": "application/json"}, json={"rid": info["id"]}, timeout=20)
+        j = r.json()
+        if j.get("meta", {}).get("code") == 200 and j.get("data"):
+            return {"number": j["data"]["full_number"], "id": f"{info['panel']}|{j['data']['full_number']}"}
+        print(f"[OUT] {country_code} {j}")
         return None
     except Exception as e:
         print(f"[CREATE ERR] {e}")
@@ -62,21 +57,26 @@ def create_order(service, country_code):
 
 def get_otp(order_id):
     try:
-        panel_name, number = order_id.split("|", 1) if "|" in order_id else ("voltx", order_id)
-        panel = PANELS[panel_name]
+        _, number = order_id.split("|", 1) if "|" in order_id else ("voltx", order_id)
         num_digits = re.sub(r'\D', '', number)
-        r = requests.get(panel["otp"], headers={"mauthapi": panel["key"]}, timeout=15)
-        # print(f"[OTP API RAW] {r.text[:2000]}")
+        r = requests.get(PANELS["voltx"]["otp"], headers={"mauthapi": PANELS["voltx"]["key"]}, timeout=15)
         data = r.json()
-        if data.get("meta", {}).get("code") == 200:
-            for otp_item in data.get("data", {}).get("otps", []):
-                en = re.sub(r'\D', '', str(otp_item.get("number","")))
-                if en == num_digits or num_digits in en or en in num_digits or (len(en)>=8 and en[-8:] == num_digits[-8:]):
-                    m = re.search(r'(\d{4,8})', otp_item.get("message",""))
-                    if m:
-                        print(f"[OTP MATCH] {number} -> {m.group(1)}")
-                        return m.group(1)
+        if data.get("meta", {}).get("code")!= 200:
+            return None
+        for item in data.get("data", {}).get("otps", []):
+            en = re.sub(r'\D', '', str(item.get("number","")))
+            if num_digits[-8:] not in en:
+                continue
+            msg = str(item.get("message",""))
+            # FB: 123456 | WS: G-123456, 123-456, WhatsApp code: 123456
+            m = re.search(r'G-?(\d{4,8})|(\d{3}-\d{3})|(\d{4,8})', msg)
+            if m:
+                code = next((g for g in m.groups() if g), None)
+                if code:
+                    clean = code.replace("-", "")
+                    print(f"[OTP FOUND] {number} => {clean}")
+                    return clean
         return None
     except Exception as e:
-        print(f"[GET_OTP ERR] {e}")
+        print(f"[OTP ERR] {e}")
         return None
