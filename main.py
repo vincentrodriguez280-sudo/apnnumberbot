@@ -29,7 +29,7 @@ if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
 
 ADMIN_ID = 1853202569
 GROUP_NAME_TITLE = "APN OTP GROUP"
-COMMUNITY_URL = "https://t.me/APNOTP"
+COMMUNITY_URL = "https://t.me/APNOfficial"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
 FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "CAMEROON": "🇨🇲"}
 
@@ -76,7 +76,17 @@ def mask_number(num):
     if len(n) <= 6: return "+" + n
     return f"+{n[:4]}XXXXXX{n[-3:]}"
 
-def format_rocket_style(country_code, full_number, service, otp_code):
+def format_for_inbox(country_code, full_number, service, otp_code):
+    clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
+    country_name = clean.replace("_", " ").title()
+    flag = FLAGS.get(clean, "🌍")
+    service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB"] else "WhatsApp"
+    otp_show = f"{otp_code[:3]}-{otp_code[3:]}" if len(otp_code) >= 6 and "-" not in otp_code else otp_code
+    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {full_number}\n🧰 Service: {service_display}\n🔍 OTP: {otp_show}"
+    keyboard = [[InlineKeyboardButton("🚀 Community", url=COMMUNITY_URL), InlineKeyboardButton("📱 Number", url=NUMBER_BOT_URL)]]
+    return text, InlineKeyboardMarkup(keyboard)
+
+def format_for_group(country_code, full_number, service, otp_code):
     clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
     country_name = clean.replace("_", " ").title()
     flag = FLAGS.get(clean, "🌍")
@@ -98,18 +108,19 @@ async def is_joined(user_id, context):
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
     print(f"[WATCHER START] {number} {order_id}")
-    for i in range(180): # 15 MIN PROFESSIONAL
+    for i in range(180):
         await asyncio.sleep(5)
         try:
             otp = get_otp(order_id)
             if otp:
                 print(f"[OTP FOUND] {number} -> {otp}")
-                text, markup = format_rocket_style(country_code, number, service, otp)
+                text_inbox, markup_inbox = format_for_inbox(country_code, number, service, otp)
+                text_group, markup_group = format_for_group(country_code, number, service, otp)
                 try:
-                    await bot.send_message(chat_id=user_id, text=text, reply_markup=markup)
+                    await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox)
                 except: pass
                 try:
-                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text, reply_markup=markup)
+                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text_group, reply_markup=markup_group)
                 except Exception as e:
                     print(f"[FAIL GROUP] {e}")
                 db = load_json(BAL_FILE, {})
