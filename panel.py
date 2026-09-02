@@ -1,4 +1,4 @@
-import requests, re, json, os
+import requests, re, json, os, threading
 from bs4 import BeautifulSoup
 
 BASE_DIR = "/app/data" if os.path.exists("/app/data") else "."
@@ -29,6 +29,7 @@ PANELS = {
 
 session = requests.Session()
 _logged_in = False
+file_lock = threading.Lock()
 
 def load_ranges():
     data = {"FACEBOOK": {}, "WHATSAPP": {}}
@@ -70,32 +71,34 @@ def get_range_info(code):
 
 def get_number_from_file():
     possible_files = [NUMBERS_FILE, "numbers.txt", os.path.join(BASE_DIR, "numbers.txt"), "./numbers.txt", "/app/numbers.txt", "/app/data/numbers.txt"]
-    file_to_use = None
-    for pf in possible_files:
-        if os.path.exists(pf):
-            try:
-                if os.path.getsize(pf) > 0:
-                    with open(pf,'r') as tf:
-                        lines = [l.strip() for l in tf if l.strip() and not l.strip().startswith("#")]
-                        if lines:
-                            file_to_use = pf
-                            break
-            except: continue
-    if not file_to_use:
-        return None
-    try:
-        with open(file_to_use, 'r') as f:
-            lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
-        if not lines:
+    with file_lock:
+        file_to_use = None
+        for pf in possible_files:
+            if os.path.exists(pf):
+                try:
+                    if os.path.getsize(pf) > 0:
+                        with open(pf,'r') as tf:
+                            content = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#")]
+                            if content:
+                                file_to_use = pf
+                                break
+                except: continue
+        if not file_to_use:
             return None
-        number = lines[0]
-        with open(file_to_use, 'w') as f:
-            f.write("\n".join(lines[1:]))
-        print(f"[NEPAL FILE] Giving {number} from {file_to_use}")
-        return number
-    except Exception as e:
-        print(f"[FILE ERR] {e}")
-        return None
+        try:
+            with open(file_to_use, 'r') as f:
+                lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
+            if not lines:
+                return None
+            number = lines[0]
+            remaining = lines[1:]
+            with open(file_to_use, 'w') as f:
+                f.write("\n".join(remaining))
+            print(f"[NEPAL FILE] Giving {number} from {file_to_use} | {len(remaining)} left")
+            return number
+        except Exception as e:
+            print(f"[FILE ERR] {e}")
+            return None
 
 def client_login():
     global _logged_in, session
