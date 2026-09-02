@@ -309,8 +309,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 btn_text = f"{display} {rid}" if rid else display
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: {service}
-Select country:", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
         return
     if data.startswith("c_"):
         country_code = data[2:]
