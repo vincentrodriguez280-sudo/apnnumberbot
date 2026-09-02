@@ -31,7 +31,18 @@ ADMIN_ID = 1853202569
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOfficial"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-FLAGS = {"NEPAL": "🇳🇵", "MADAGASCAR": "🇲🇬", "HAITI": "🇭🇹", "MONTENEGRO": "🇲🇪", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "CAMEROON": "🇨🇲"}
+FLAGS = {
+    "NEPAL": "🇳🇵", "NEPAL_FB": "🇳🇵",
+    "CAMEROON": "🇨🇲",
+    "GUINEA": "🇬🇳", "GUNIEA": "🇬🇳",
+    "MADAGASCAR": "🇲🇬", "MADAGASCAR_NEW_ACCOUNT": "🇲🇬", "MADAGASCAR_OLD_ACCOUNT": "🇲🇬",
+    "MONTENEGRO": "🇲🇪",
+    "UKRAINE": "🇺🇦",
+    "HAITI": "🇭🇹",
+    "SIERRA_LEONE": "🇸🇱",
+    "USA": "🇺🇸",
+    "USA_FB": "🇺🇸",
+}
 
 def load_json(f, default):
     if os.path.exists(f):
@@ -291,22 +302,36 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         ranges_data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
         kb = []
-        # Force Nepal on top for FB
+        # Deduplicate and force Nepal only once on top
+        seen_base = set()
+        unique_countries = []
+        for c in countries:
+            base = c.upper().split("_")[0]
+            if base not in seen_base or "NEPAL" in base:
+                # For Nepal, keep only one
+                if "NEPAL" in base:
+                    if "NEPAL" not in seen_base:
+                        unique_countries.append("NEPAL_FB")
+                        seen_base.add("NEPAL")
+                else:
+                    unique_countries.append(c.upper())
+                    seen_base.add(base)
+        # Ensure Nepal is first
+        unique_countries = [c for c in unique_countries if "NEPAL" not in c]
         if service.upper() == "FACEBOOK":
-            if "NEPAL_FB" not in [c.upper() for c in countries]:
-                countries.insert(0, "NEPAL_FB")
-        def sort_key(code):
-            if "NEPAL" in code.upper():
-                return (0, code)
-            return (1, code)
-        countries_sorted = sorted(list(dict.fromkeys([c.upper() for c in countries])), key=sort_key)
+            unique_countries.insert(0, "NEPAL_FB")
+        countries_sorted = unique_countries
         for code in countries_sorted:
             display = get_display_name(code)
-            rid = ranges_data.get(service, {}).get(code.upper(), "")
+            base_key = code.upper().split("_")[0]
+            # Get flag
+            flag = FLAGS.get(code.upper(), FLAGS.get(base_key, "🌍"))
+            # Clean display - no extra text
             if "NEPAL" in code.upper():
-                btn_text = f"🇳🇵 Nepal [FILE] - TXT"
+                btn_text = f"{flag} Nepal"
             else:
-                btn_text = f"{display} {rid}" if rid else display
+                # Show flag + country name (no range id, clean as you want)
+                btn_text = f"{flag} {display}"
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
         await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
