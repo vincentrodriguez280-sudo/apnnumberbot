@@ -176,12 +176,35 @@ def get_otp_voltx(number):
 
 # -------- MAIN FUNCTIONS USED BY BOT --------
 def create_order(service, country_code):
-    # STEP 1: Try numbers.txt (for client panel) - New system
-    num_from_file = get_number_from_file()
-    if num_from_file:
-        return {"number": num_from_file, "id": f"client|{num_from_file}", "source": "client"}
+    # Check which country should use file
+    client_countries = CFG.get("CLIENT_COUNTRIES", ["NEPAL", "NEPAL_FB"])
+    # Normalize: allow NEPAL to match NEPAL_FB, NEPAL_WS etc
+    code_upper = country_code.upper()
+    use_file = False
+    for c in client_countries:
+        c_up = c.upper()
+        if c_up == code_upper or c_up in code_upper or code_upper.startswith(c_up.replace("_FB","").replace("_WS","")):
+            # Also check base name: NEPAL matches NEPAL_FB
+            if c_up.split("_")[0] == code_upper.split("_")[0]:
+                use_file = True
+                break
+            if c_up == code_upper:
+                use_file = True
+                break
+    # If exact match logic
+    if code_upper in [x.upper() for x in client_countries]:
+        use_file = True
 
-    # STEP 2: Old Voltx system - For existing members (kichu kati nai)
+    if use_file:
+        print(f"[CLIENT MODE] {country_code} -> Trying numbers.txt")
+        num_from_file = get_number_from_file()
+        if num_from_file:
+            return {"number": num_from_file, "id": f"client|{num_from_file}", "source": "client"}
+        else:
+            print(f"[CLIENT EMPTY] {country_code} file empty, falling back to voltx")
+            # If file empty, fallback to voltx
+
+    # STEP 2: Voltx system for all other countries
     info = get_range_info(country_code)
     if not info: 
         return None
