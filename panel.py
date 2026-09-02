@@ -98,48 +98,125 @@ def get_number_from_file():
         return None
 
 def client_login():
-    global _logged_in
+    global _logged_in, session
     try:
+        if _logged_in: 
+            # Test if session still valid
+            try:
+                session.get(PANELS["client"]["login_url"], timeout=5)
+            except:
+                _logged_in = False
+                session = requests.Session()
         if _logged_in: return True
-        session.get(PANELS["client"]["login_url"], timeout=10)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        try:
+            session.get(PANELS["client"]["login_url"], headers=headers, timeout=10)
+        except: pass
         for payload in [
             {"username": PANELS["client"]["user"], "password": PANELS["client"]["pass"]},
             {"client_username": PANELS["client"]["user"], "client_password": PANELS["client"]["pass"]},
+            {"user": PANELS["client"]["user"], "pass": PANELS["client"]["pass"]},
         ]:
             try:
-                r = session.post(PANELS["client"]["login_url"], data=payload, timeout=10)
-                if r.status_code == 200:
+                r = session.post(PANELS["client"]["login_url"], data=payload, headers=headers, timeout=15)
+                if r.status_code == 200 and ("dashboard" in r.text.lower() or "logout" in r.text.lower() or "smscdr" in r.text.lower() or len(r.text) > 500):
                     _logged_in = True
+                    print("[CLIENT LOGIN] Success")
                     return True
-            except: continue
+            except Exception as e:
+                print(f"[LOGIN TRY ERR] {e}")
+                continue
         _logged_in = True
         return True
-    except: return False
+    except Exception as e:
+        print(f"[CLIENT LOGIN ERR] {e}")
+        return False
 
 def get_otp_client(target_number):
-    try:
-        client_login()
-        url = PANELS["client"]["url"]
-        r = session.post(url, data={"search_number": target_number, "sSearch": target_number}, timeout=15)
-        if "FB-" not in r.text:
-            r = session.get(url, params={"search_number": target_number}, timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        for tr in soup.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) < 5: continue
-            num_col = tds[2].get_text(strip=True)
-            sms_col = tds[4].get_text(strip=True)
-            if re.sub(r'\D','',target_number)[-7:] in re.sub(r'\D','',num_col):
-                m = re.search(r'FB-(\d{4,8})', sms_col)
-                if m: return m.group(1)
-                m = re.search(r'#(\d{4,8})', sms_col)
-                if m: return m.group(1)
-                m = re.search(r'\b(\d{5,6})\b', sms_col)
-                if m: return m.group(1)
-        return None
-    except Exception as e:
-        print(f"[CLIENT OTP ERR] {e}")
-        return None
+    global session, _logged_in
+    import time
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+    for attempt in range(3):
+        try:
+            client_login()
+            url = PANELS["client"]["url"]
+            # Try POST first
+            try:
+                r = session.post(url, data={"search_number": target_number, "sSearch": target_number}, headers=headers, timeout=20)
+            except Exception as e:
+                print(f"[CLIENT POST ERR attempt {attempt+1}] {e}")
+                # Recreate session on connection error
+                session = requests.Session()
+                _logged_in = False
+                time.sleep(2)
+                continue
+
+            if "FB-" not in r.text and len(r.text) < 1000:
+                # Try GET
+                try:
+                    r = session.get(url, params={"search_number": target_number}, headers=headers, timeout=20)
+                except Exception as e:
+                    print(f"[CLIENT GET ERR attempt {attempt+1}] {e}")
+                    session = requests.Session()
+                    _logged_in = False
+                    time.sleep(2)
+                    continue
+
+            text = r.text
+            if not text or len(text) < 100:
+                print(f"[CLIENT EMPTY RESP attempt {attempt+1}] len={len(text)}")
+                time.sleep(1)
+                continue
+
+            soup = BeautifulSoup(text, 'html.parser')
+            found = False
+            for tr in soup.find_all("tr"):
+                tds = tr.find_all("td")
+                if len(tds) < 3: continue
+                try:
+                    num_col = tds[2].get_text(strip=True) if len(tds) > 2 else ""
+                    sms_col = tds[4].get_text(strip=True) if len(tds) > 4 else tr.get_text()
+                except: continue
+                clean_num = re.sub(r'\D','',num_col)
+                clean_target = re.sub(r'\D','',target_number)
+                if not clean_num: clean_num = re.sub(r'\D','', tr.get_text())
+                if clean_target[-7:] in clean_num or clean_num[-7:] in clean_target or clean_target in clean_num:
+                    found = True
+                    m = re.search(r'FB-(\d{4,8})', sms_col)
+                    if m: 
+                        print(f"[CLIENT OTP FOUND] {target_number} => {m.group(1)}")
+                        return m.group(1)
+                    m = re.search(r'#(\d{4,8})', sms_col)
+                    if m: return m.group(1)
+                    m = re.search(r'\b(\d{5,6})\b', sms_col)
+                    if m: return m.group(1)
+            # If not found in table, try regex on whole page
+            if not found:
+                m = re.search(r'FB-(\d{4,8})', text)
+                if m and target_number[-4:] in text:
+                    return m.group(1)
+            return None
+        except Exception as e:
+            err_str = str(e)
+            if "RemoteDisconnected" in err_str or "Connection aborted" in err_str or "ConnectionReset" in err_str:
+                print(f"[CLIENT OTP RETRY {attempt+1}/3] {e} - recreating session")
+                session = requests.Session()
+                _logged_in = False
+                time.sleep(2 + attempt)
+                continue
+            print(f"[CLIENT OTP ERR] {e}")
+            return None
+    print(f"[CLIENT OTP FAIL] {target_number} after 3 attempts")
+    return None
 
 def get_otp_voltx(number):
     try:
