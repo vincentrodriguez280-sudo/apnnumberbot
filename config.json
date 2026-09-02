@@ -1,5 +1,5 @@
 {
-  "PANEL_TYPE": "dual",
+  "PANEL_TYPE": "mixed",
   "PANEL_URL": "http://139.99.68.231/ints/client/SMSCDRStats",
   "LOGIN_URL": "http://139.99.68.231/ints/client/login",
   "PANEL_USER": "Polaszone",
@@ -9,5 +9,12 @@
   "VOLTX_ENABLED": true,
   "CLIENT_ENABLED": true,
   "USE_NUMBER_FILE": true,
-  "NUMBERS_PER_ORDER": 3
+  "NUMBERS_PER_ORDER": 3,
+  "CLIENT_COUNTRIES": [
+    "NEPAL",
+    "NEPAL_FB",
+    "NEPAL_WS",
+    "NEPAL_FB_2"
+  ],
+  "VOLTX_COUNTRIES": []
 }
