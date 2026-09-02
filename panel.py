@@ -46,17 +46,11 @@ def load_ranges():
 def get_all_countries(service="facebook"):
     key = "WHATSAPP" if service.lower() in ["whatsapp","ws"] else "FACEBOOK"
     base = list(load_ranges().get(key, {}).keys())
-    # Always add Nepal for FB from file
+    # Always add Nepal for FB from file - only once
     if key == "FACEBOOK":
-        if "NEPAL_FB" not in base:
-            base.append("NEPAL_FB")
-        if "NEPAL" not in base and "NEPAL_FB" not in [x.upper() for x in base]:
-            base.append("NEPAL_FB")
-    # Also add from config
-    for c in CFG.get("CLIENT_COUNTRIES", ["NEPAL_FB"]):
-        if c.upper() not in base:
-            if key == "FACEBOOK" and "FB" in c.upper() or "NEPAL" in c.upper():
-                base.append(c.upper())
+        # Remove any existing Nepal variants to avoid duplicate
+        base = [b for b in base if "NEPAL" not in b.upper()]
+        base.insert(0, "NEPAL_FB")
     return base
 
 def get_display_name(code):
