@@ -6,16 +6,12 @@ RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
 NUMBERS_FILE = os.path.join(BASE_DIR, "numbers.txt")
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 
-# Load config for Polaszone panel
 CFG = {}
-if os.path.exists("config.json"):
-    try:
-        with open("config.json","r") as f: CFG=json.load(f)
-    except: pass
-if os.path.exists(CONFIG_FILE):
-    try:
-        with open(CONFIG_FILE,"r") as f: CFG.update(json.load(f))
-    except: pass
+for p in ["config.json", CONFIG_FILE]:
+    if os.path.exists(p):
+        try:
+            with open(p,"r") as f: CFG.update(json.load(f))
+        except: pass
 
 PANELS = {
     "voltx": {
@@ -49,7 +45,19 @@ def load_ranges():
 
 def get_all_countries(service="facebook"):
     key = "WHATSAPP" if service.lower() in ["whatsapp","ws"] else "FACEBOOK"
-    return list(load_ranges().get(key, {}).keys())
+    base = list(load_ranges().get(key, {}).keys())
+    # Always add Nepal for FB from file
+    if key == "FACEBOOK":
+        if "NEPAL_FB" not in base:
+            base.append("NEPAL_FB")
+        if "NEPAL" not in base and "NEPAL_FB" not in [x.upper() for x in base]:
+            base.append("NEPAL_FB")
+    # Also add from config
+    for c in CFG.get("CLIENT_COUNTRIES", ["NEPAL_FB"]):
+        if c.upper() not in base:
+            if key == "FACEBOOK" and "FB" in c.upper() or "NEPAL" in c.upper():
+                base.append(c.upper())
+    return base
 
 def get_display_name(code):
     name = code.replace("_FB","").replace("_WS","").replace("_2","").replace("_"," ").title()
@@ -61,24 +69,24 @@ def get_range_info(code):
     for srv in ["FACEBOOK", "WHATSAPP"]:
         if code.upper() in data.get(srv, {}):
             return {"id": data[srv][code.upper()], "panel": "voltx", "service": srv}
+    # Nepal file-based
+    if "NEPAL" in code.upper():
+        return {"id": "file", "panel": "client", "service": "FILE"}
     return None
 
-# -------- NUMBER FILE (CLIENT PANEL - NEW) --------
 def get_number_from_file():
-    # Github + Railway support - 2 jayga check korbe
-    possible_files = [NUMBERS_FILE, "numbers.txt", os.path.join(BASE_DIR, "numbers.txt"), "./numbers.txt", "/app/numbers.txt"]
+    possible_files = [NUMBERS_FILE, "numbers.txt", os.path.join(BASE_DIR, "numbers.txt"), "./numbers.txt", "/app/numbers.txt", "/app/data/numbers.txt"]
     file_to_use = None
     for pf in possible_files:
         if os.path.exists(pf):
             try:
                 if os.path.getsize(pf) > 0:
                     with open(pf,'r') as tf:
-                        content = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#")]
-                        if content:
+                        lines = [l.strip() for l in tf if l.strip() and not l.strip().startswith("#")]
+                        if lines:
                             file_to_use = pf
                             break
             except: continue
-    
     if not file_to_use:
         return None
     try:
@@ -87,16 +95,14 @@ def get_number_from_file():
         if not lines:
             return None
         number = lines[0]
-        # Baki number gula rekhe dao
         with open(file_to_use, 'w') as f:
             f.write("\n".join(lines[1:]))
-        print(f"[CLIENT FILE] Using {file_to_use} -> Giving {number}")
+        print(f"[NEPAL FILE] Giving {number} from {file_to_use}")
         return number
     except Exception as e:
-        print(f"[FILE READ ERR] {e}")
+        print(f"[FILE ERR] {e}")
         return None
 
-# -------- CLIENT PANEL LOGIN + OTP (NEW) --------
 def client_login():
     global _logged_in
     try:
@@ -105,8 +111,6 @@ def client_login():
         for payload in [
             {"username": PANELS["client"]["user"], "password": PANELS["client"]["pass"]},
             {"client_username": PANELS["client"]["user"], "client_password": PANELS["client"]["pass"]},
-            {"user": PANELS["client"]["user"], "pass": PANELS["client"]["pass"]},
-            {"email": PANELS["client"]["user"], "password": PANELS["client"]["pass"]},
         ]:
             try:
                 r = session.post(PANELS["client"]["login_url"], data=payload, timeout=10)
@@ -116,29 +120,22 @@ def client_login():
             except: continue
         _logged_in = True
         return True
-    except Exception as e:
-        print(f"[CLIENT LOGIN ERR] {e}")
-        return False
+    except: return False
 
 def get_otp_client(target_number):
     try:
         client_login()
         url = PANELS["client"]["url"]
-        data = {"search_number": target_number, "sSearch": target_number}
-        r = session.post(url, data=data, timeout=15)
+        r = session.post(url, data={"search_number": target_number, "sSearch": target_number}, timeout=15)
         if "FB-" not in r.text:
             r = session.get(url, params={"search_number": target_number}, timeout=15)
-        
-        text = r.text
-        soup = BeautifulSoup(text, 'html.parser')
+        soup = BeautifulSoup(r.text, 'html.parser')
         for tr in soup.find_all("tr"):
             tds = tr.find_all("td")
             if len(tds) < 5: continue
             num_col = tds[2].get_text(strip=True)
             sms_col = tds[4].get_text(strip=True)
-            clean_num = re.sub(r'\D','',num_col)
-            clean_target = re.sub(r'\D','',target_number)
-            if clean_target[-7:] in clean_num or clean_num[-7:] in clean_target:
+            if re.sub(r'\D','',target_number)[-7:] in re.sub(r'\D','',num_col):
                 m = re.search(r'FB-(\d{4,8})', sms_col)
                 if m: return m.group(1)
                 m = re.search(r'#(\d{4,8})', sms_col)
@@ -159,66 +156,40 @@ def get_otp_voltx(number):
             return None
         for item in data.get("data", {}).get("otps", []):
             en = re.sub(r'\D', '', str(item.get("number","")))
-            if num_digits[-8:] not in en:
-                continue
+            if num_digits[-8:] not in en: continue
             msg = str(item.get("message",""))
             m = re.search(r'G-?(\d{4,8})|(\d{3}-\d{3})|(\d{4,8})', msg)
             if m:
                 code = next((g for g in m.groups() if g), None)
-                if code:
-                    clean = code.replace("-", "")
-                    print(f"[VOLTX OTP FOUND] {number} => {clean}")
-                    return clean
+                if code: return code.replace("-", "")
         return None
-    except Exception as e:
-        print(f"[VOLTX OTP ERR] {e}")
-        return None
+    except: return None
 
-# -------- MAIN FUNCTIONS USED BY BOT --------
 def create_order(service, country_code):
-    # Check which country should use file
-    client_countries = CFG.get("CLIENT_COUNTRIES", ["NEPAL", "NEPAL_FB"])
-    # Normalize: allow NEPAL to match NEPAL_FB, NEPAL_WS etc
-    code_upper = country_code.upper()
-    use_file = False
-    for c in client_countries:
-        c_up = c.upper()
-        if c_up == code_upper or c_up in code_upper or code_upper.startswith(c_up.replace("_FB","").replace("_WS","")):
-            # Also check base name: NEPAL matches NEPAL_FB
-            if c_up.split("_")[0] == code_upper.split("_")[0]:
-                use_file = True
-                break
-            if c_up == code_upper:
-                use_file = True
-                break
-    # If exact match logic
-    if code_upper in [x.upper() for x in client_countries]:
-        use_file = True
+    # Nepal = file system
+    if "NEPAL" in country_code.upper():
+        print(f"[NEPAL MODE] {country_code} -> txt file")
+        num = get_number_from_file()
+        if num:
+            return {"number": num, "id": f"client|{num}", "source": "client"}
+        print("[NEPAL EMPTY] fallback to voltx if has range")
 
-    if use_file:
-        print(f"[CLIENT MODE] {country_code} -> Trying numbers.txt")
-        num_from_file = get_number_from_file()
-        if num_from_file:
-            return {"number": num_from_file, "id": f"client|{num_from_file}", "source": "client"}
-        else:
-            print(f"[CLIENT EMPTY] {country_code} file empty, falling back to voltx")
-            # If file empty, fallback to voltx
-
-    # STEP 2: Voltx system for all other countries
     info = get_range_info(country_code)
-    if not info: 
+    if not info: return None
+    if info["panel"] == "client":
+        num = get_number_from_file()
+        if num:
+            return {"number": num, "id": f"client|{num}", "source": "client"}
         return None
-    panel = PANELS[info["panel"]]
+    # Voltx for others
+    panel = PANELS["voltx"]
     try:
         r = requests.post(panel["allocate"], headers={"mauthapi": panel["key"], "Content-Type": "application/json"}, json={"rid": info["id"]}, timeout=20)
         j = r.json()
         if j.get("meta", {}).get("code") == 200 and j.get("data"):
-            return {"number": j["data"]["full_number"], "id": f"{info['panel']}|{j['data']['full_number']}", "source": "voltx"}
-        print(f"[OUT] {country_code} {j}")
+            return {"number": j["data"]["full_number"], "id": f"voltx|{j['data']['full_number']}", "source": "voltx"}
         return None
-    except Exception as e:
-        print(f"[CREATE ERR] {e}")
-        return None
+    except: return None
 
 def get_otp(order_id):
     try:
@@ -227,6 +198,4 @@ def get_otp(order_id):
             return get_otp_client(number)
         else:
             return get_otp_voltx(number)
-    except Exception as e:
-        print(f"[OTP ERR] {e}")
-        return None
+    except: return None
