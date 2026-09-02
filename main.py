@@ -111,7 +111,7 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
     for i in range(180):
         await asyncio.sleep(5)
         try:
-            otp = get_otp(order_id)
+            otp = await asyncio.to_thread(get_otp, order_id)
             if otp:
                 print(f"[OTP FOUND] {number} -> {otp}")
                 text_inbox, markup_inbox = format_for_inbox(country_code, number, service, otp)
@@ -215,9 +215,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
     data = q.data
     uid = q.from_user.id
+    try:
+        await q.answer()
+    except: 
+        pass
     if is_maintenance() and uid!= ADMIN_ID:
         await q.edit_message_text("🛠 System Under Maintenance")
         return
@@ -301,12 +304,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"⏳ Fetching 3 numbers for {display}...")
         nums = []
         for i in range(3):
-            order = create_order(service, country_code)
+            try:
+                order = await asyncio.to_thread(create_order, service, country_code)
+            except Exception as e:
+                print(f"[CREATE THREAD ERR] {e}")
+                order = None
             if order:
                 nums.append(order)
                 add_request(uid, display)
                 context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
@@ -318,7 +325,21 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
         return
 
-app = ApplicationBuilder().token(TOKEN).build()
+from telegram.request import HTTPXRequest
+# Increase timeout for Railway
+request = HTTPXRequest(connection_pool_size=20, connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)
+app = ApplicationBuilder().token(TOKEN).request(request).build()
+
+async def error_handler(update, context):
+    print(f"[BOT ERROR] {context.error}")
+    # Don't crash on timeout
+    try:
+        if "Timed out" in str(context.error) or "ConnectTimeout" in str(context.error):
+            return
+    except: pass
+
+app.add_error_handler(error_handler)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
