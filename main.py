@@ -284,18 +284,33 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service = data[2:]
         context.user_data['service'] = service
         countries = get_all_countries(service)
+        if not countries and service.upper() == "FACEBOOK":
+            countries = ["NEPAL_FB"]
         if not countries:
             await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]))
             return
-        kb = []
         ranges_data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-        for code in countries:
+        kb = []
+        # Force Nepal on top for FB
+        if service.upper() == "FACEBOOK":
+            if "NEPAL_FB" not in [c.upper() for c in countries]:
+                countries.insert(0, "NEPAL_FB")
+        def sort_key(code):
+            if "NEPAL" in code.upper():
+                return (0, code)
+            return (1, code)
+        countries_sorted = sorted(list(dict.fromkeys([c.upper() for c in countries])), key=sort_key)
+        for code in countries_sorted:
             display = get_display_name(code)
             rid = ranges_data.get(service, {}).get(code.upper(), "")
-            btn_text = f"{display} {rid}" if rid else display
+            if "NEPAL" in code.upper():
+                btn_text = f"🇳🇵 Nepal [FILE] - TXT"
+            else:
+                btn_text = f"{display} {rid}" if rid else display
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text(f"Service: {service}
+Select country:", reply_markup=InlineKeyboardMarkup(kb))
         return
     if data.startswith("c_"):
         country_code = data[2:]
