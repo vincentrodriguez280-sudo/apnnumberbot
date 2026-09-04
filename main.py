@@ -92,8 +92,9 @@ def format_for_inbox(country_code, full_number, service, otp_code):
     country_name = clean.replace("_", " ").title()
     flag = FLAGS.get(clean, "🌍")
     service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB"] else "WhatsApp"
-    otp_show = f"{otp_code[:3]}-{otp_code[3:]}" if len(otp_code) >= 6 and "-" not in otp_code else otp_code
-    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {full_number}\n🧰 Service: {service_display}\n🔍 OTP: {otp_show}"
+    otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
+    # OTP COPY FIX - backticks = tap to copy
+    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {full_number}\n🧰 Service: {service_display}\n🔍 OTP: `{otp_digits}`"
     keyboard = [[InlineKeyboardButton("🚀 Community", url=COMMUNITY_URL), InlineKeyboardButton("📱 Number", url=NUMBER_BOT_URL)]]
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -103,8 +104,8 @@ def format_for_group(country_code, full_number, service, otp_code):
     flag = FLAGS.get(clean, "🌍")
     masked = mask_number(full_number)
     service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB"] else "WhatsApp"
-    otp_show = f"{otp_code[:3]}-{otp_code[3:]}" if len(otp_code) >= 6 and "-" not in otp_code else otp_code
-    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {masked}\n🧰 Service: {service_display}\n🔍 OTP: {otp_show}"
+    otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
+    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {masked}\n🧰 Service: {service_display}\n🔍 OTP: `{otp_digits}`"
     keyboard = [[InlineKeyboardButton("🚀 Community", url=COMMUNITY_URL), InlineKeyboardButton("📱 Number", url=NUMBER_BOT_URL)]]
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -128,10 +129,11 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 text_inbox, markup_inbox = format_for_inbox(country_code, number, service, otp)
                 text_group, markup_group = format_for_group(country_code, number, service, otp)
                 try:
+                    await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox, parse_mode="Markdown")
+                except:
                     await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox)
-                except: pass
                 try:
-                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text_group, reply_markup=markup_group)
+                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text_group, reply_markup=markup_group, parse_mode="Markdown")
                 except Exception as e:
                     print(f"[FAIL GROUP] {e}")
                 db = load_json(BAL_FILE, {})
@@ -302,13 +304,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         ranges_data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
         kb = []
-        # Deduplicate and force Nepal only once on top
         seen_base = set()
         unique_countries = []
         for c in countries:
             base = c.upper().split("_")[0]
             if base not in seen_base or "NEPAL" in base:
-                # For Nepal, keep only one
                 if "NEPAL" in base:
                     if "NEPAL" not in seen_base:
                         unique_countries.append("NEPAL_FB")
@@ -316,7 +316,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     unique_countries.append(c.upper())
                     seen_base.add(base)
-        # Ensure Nepal is first
         unique_countries = [c for c in unique_countries if "NEPAL" not in c]
         if service.upper() == "FACEBOOK":
             unique_countries.insert(0, "NEPAL_FB")
@@ -324,13 +323,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for code in countries_sorted:
             display = get_display_name(code)
             base_key = code.upper().split("_")[0]
-            # Get flag
             flag = FLAGS.get(code.upper(), FLAGS.get(base_key, "🌍"))
-            # Clean display - no extra text
             if "NEPAL" in code.upper():
                 btn_text = f"{flag} Nepal"
             else:
-                # Show flag + country name (no range id, clean as you want)
                 btn_text = f"{flag} {display}"
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
@@ -365,13 +361,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 from telegram.request import HTTPXRequest
-# Increase timeout for Railway
 request = HTTPXRequest(connection_pool_size=20, connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)
 app = ApplicationBuilder().token(TOKEN).request(request).build()
 
 async def error_handler(update, context):
     print(f"[BOT ERROR] {context.error}")
-    # Don't crash on timeout
     try:
         if "Timed out" in str(context.error) or "ConnectTimeout" in str(context.error):
             return
