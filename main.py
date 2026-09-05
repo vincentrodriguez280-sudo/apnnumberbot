@@ -336,9 +336,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         country_code = data[2:]
         service = context.user_data.get('service', 'FACEBOOK')
         display = get_display_name(country_code)
-        await q.edit_message_text(f"⏳ Fetching 3 numbers for {display}...")
+        # Nepal = 3 numbers (file), Voltx = 6 numbers
+        is_nepal = "NEPAL" in country_code.upper()
+        num_count = 3 if is_nepal else 6
+        await q.edit_message_text(f"⏳ Fetching {num_count} numbers for {display}...")
         nums = []
-        for i in range(3):
+        for i in range(num_count):
             try:
                 order = await asyncio.to_thread(create_order, service, country_code)
             except Exception as e:
@@ -353,7 +356,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
         kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
-        txt = f"YOUR {display} {service} 3 NUMBERS\n\n"
+        txt = f"YOUR {display} {service} {num_count} NUMBERS\n\n"
         for o in nums:
             txt += f"`{o['number']}`\n"
         txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group.\n👉 Tap number to copy!"
