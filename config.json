@@ -13,5 +13,6 @@
   "CLIENT_COUNTRIES": [
     "NEPAL_FB",
     "NEPAL"
-  ]
+  ],
+  "VOLTX_NUMBERS_PER_ORDER": 6
 }
