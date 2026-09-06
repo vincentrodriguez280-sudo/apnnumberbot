@@ -1,9 +1,10 @@
-
 import os, json, asyncio, shutil, re
 from datetime import datetime, date
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton, CopyTextButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from panel import create_order, get_otp, get_all_countries, get_display_name
+
+print("[BOT] Starting with fixed OTP copy + service name + Number/Channel buttons")
 
 TOKEN = os.getenv("BOT_TOKEN")
 MUST_JOIN = ["@APNOfficial", "@APNOTP", "@Proxystore999"]
@@ -14,17 +15,21 @@ OTP_GROUP = "https://t.me/APNOTP"
 OTP_GROUP_ID = "@APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
-GROUP_NAME_TITLE = "APN NUMBER BOT"
 COMMUNITY_URL = "https://t.me/APNOfficial"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
-BOT_LINK = "https://t.me/Proxystore999"
 
-# Railway volume support - /data and /app/data both
-BASE_DIR = "/data" if os.path.exists("/data") else ("/app/data" if os.path.exists("/app/data") else ".")
-try:
-    os.makedirs(BASE_DIR, exist_ok=True)
-    print(f"[DATA] Using {BASE_DIR}")
-except:
+# Railway volume - /data support
+for p in ["/data", "/app/data", "."]:
+    try:
+        if os.path.exists(p) or p in ["/data", "/app/data"]:
+            os.makedirs(p, exist_ok=True)
+            if os.path.exists(p):
+                BASE_DIR = p
+                print(f"[DATA] Using {BASE_DIR} (Volume found)" if p=="/data" else f"[DATA] Using {BASE_DIR}")
+                break
+    except:
+        continue
+else:
     BASE_DIR = "."
     os.makedirs(BASE_DIR, exist_ok=True)
 
@@ -58,13 +63,19 @@ PRICES = {
     "DEFAULT": "0.003$",
 }
 
+BASE_DIR_FALLBACK = "."
+try:
+    os.makedirs(BASE_DIR, exist_ok=True)
+except:
+    BASE_DIR = "."
+
 def load_json(f, default):
-    for path in [f, os.path.join(".", os.path.basename(f))]:
+    for path in [f, os.path.join(".", os.path.basename(f)), os.path.join(BASE_DIR_FALLBACK, os.path.basename(f))]:
         if os.path.exists(path):
             try:
-                with open(path,'r') as fp:
+                with open(path,'r') as fp: 
                     data = json.load(fp)
-                    if data:
+                    if data: 
                         return data
             except: continue
     return default
@@ -131,17 +142,21 @@ def mask_number(num):
     if len(n) <= 6: return "+" + n
     return f"+{n[:4]}XXXXXX{n[-3:]}"
 
+# ========== FIXED: OTP ONLY IN BUTTON + COPY WORKS + SERVICE NAME FIX ==========
 def format_for_inbox(country_code, full_number, service, otp_code):
     clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
     country_name = clean.replace("_", " ").title()
     flag = FLAGS.get(clean, FLAGS.get(clean.split("_")[0], "🌍"))
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
+    # Service name fix - TikTok na, asol service er nam
     service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB", "NEPAL", "NEPAL_FB"] else service.title()
     if "NEPAL" in clean.upper():
         earn_text = "+$0.005"
     else:
         earn_text = "+$0.003"
+    # OTP sudu button e thakbe, text e thakbe na
     text = f"{flag} {country_name}\n📞 `{full_number}`\n💼 Service: {service_display}\n💳 Earned: {earn_text}"
+    # Copy button - CopyTextButton diye 1 click e copy hobe (Telegram native)
     try:
         keyboard = [[InlineKeyboardButton(f"🔑 {otp_digits}", copy_text=CopyTextButton(otp_digits))]]
     except:
@@ -152,12 +167,16 @@ def format_for_group(country_code, full_number, service, otp_code):
     clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
     masked = mask_number(full_number)
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
+    # Service name fix - TikTok na, jetar number niso otar lekha thakbe
     service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB", "NEPAL", "NEPAL_FB"] else service.title()
+    # OTP sudu button e, text e box e OTP thakbe na
     text = f"APN NUMBER BOT\n💳 #{clean} 📱 {service_display}\n\n╭─────────────────╮\n  {masked}\n╰─────────────────╯\n\n🗣 Language: #English"
     try:
         otp_btn = InlineKeyboardButton(f"🔓 {otp_digits}", copy_text=CopyTextButton(otp_digits))
     except:
         otp_btn = InlineKeyboardButton(f"🔓 {otp_digits}", callback_data=f"copy_{otp_digits}")
+    # Panel lekha bad diye Channel, Channel er jaygay Number
+    # Number click -> bot e jabe, Channel click -> channel e jabe
     keyboard = [
         [otp_btn],
         [InlineKeyboardButton("🔢 Number", url=NUMBER_BOT_URL), InlineKeyboardButton("📢 Channel", url=COMMUNITY_URL)]
@@ -185,10 +204,10 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 text_group, markup_group = format_for_group(country_code, number, service, otp)
                 try:
                     await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox, parse_mode="Markdown")
-                except Exception as e:
-                    print(f"[FAIL INBOX] {e}")
+                except:
+                    await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox)
                 try:
-                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text_group, reply_markup=markup_group)
+                    await bot.send_message(chat_id=OTP_GROUP_ID, text=text_group, reply_markup=markup_group, parse_mode="Markdown")
                 except Exception as e:
                     print(f"[FAIL GROUP] {e}")
                 user = get_user(user_id)
@@ -204,6 +223,7 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                     try:
                         await auto_backup_task(bot)
                     except: pass
+                print(f"[BALANCE] User {user_id} +${earn} -> ${user['balance']:.4f} | {country_code} {service}")
                 if user.get("referred_by"):
                     ref_user = get_user(user["referred_by"])
                     refs = ref_user.get("referrals",0)
@@ -234,7 +254,7 @@ async def bot_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bot_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     status = "🔴 OFF" if is_maintenance() else "🟢 ON"
-    await update.message.reply_text(f"Bot Status: {status}\nPath: {BASE_DIR}")
+    await update.message.reply_text(f"Bot Status: {status} | Path: {BASE_DIR}")
 
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -301,7 +321,7 @@ async def backup_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = load_json(BAL_FILE, {})
         count = len(db)
         total_bal = sum([u.get("balance",0) for u in db.values()])
-        txt = f"💾 Backup Info\n\n📁 Path: {BAL_FILE}\n👥 Users: {count}\n💰 Total Balance: ${total_bal:.4f}\n\nFile exists: {os.path.exists(BAL_FILE)}"
+        txt = f"💾 Backup Info (FREE MODE)\n\n📁 Path: {BAL_FILE}\n👥 Users: {count}\n💰 Total Balance: ${total_bal:.4f}\n📂 Also saved in: ./balances.json"
         await update.message.reply_text(txt)
         for fp in [BAL_FILE, "./balances.json"]:
             if os.path.exists(fp):
@@ -323,7 +343,7 @@ async def restore_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 size = os.path.getsize(fp)
                 found.append(f"{base}/{fn} ({size}b)")
         if found:
-            txt += f"✅ {fn}: {', '.join(found)}\n"
+            txt += f"✅ {fn}: {' , '.join(found)}\n"
         else:
             txt += f"❌ {fn}: not found\n"
     await update.message.reply_text(txt)
@@ -487,40 +507,54 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     data = q.data
     uid = q.from_user.id
+    # FIXED: Copy button - fallback for old callback
     if data.startswith("copy_"):
-        code = data.replace("copy_","")
+        val = data.split("copy_",1)[1]
         try:
-            await q.answer(f"📋 Copied: {code} - Tap to paste!", show_alert=True)
+            await q.answer(f"📋 {val} Copied! Paste koro", show_alert=True)
         except:
             await q.answer()
+        try:
+            await context.bot.send_message(chat_id=uid, text=f"`{val}`\n👆 Tap to copy", parse_mode="Markdown")
+        except: pass
         return
     try:
         await q.answer()
-    except:
-        pass
+    except: pass
+
+    if data.startswith("setmethod_"):
+        method = data.replace("setmethod_","")
+        context.user_data["awaiting_wallet_for"]=method
+        await q.edit_message_text(f"✉ Send your {method} wallet address:")
+        return
+
     if is_maintenance() and uid!= ADMIN_ID:
         await q.edit_message_text("🛠 System Under Maintenance")
         return
     if data!= "check" and not await is_joined(uid, context):
+        txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
         kb = [
             [InlineKeyboardButton("Join Channel 1", url=CH1)],
             [InlineKeyboardButton("Join Channel 2", url=CH2)],
             [InlineKeyboardButton("Join Channel 3", url=CH3)],
             [InlineKeyboardButton("✅ Verify", callback_data="check")]
         ]
-        await q.edit_message_text("⚠️ Access Denied!\nPlease join our channels.", reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "check":
         if await is_joined(uid, context):
-            await q.edit_message_text("✅ Verification Successful!\nWelcome!", reply_markup=main_menu_keyboard(0))
-            await context.bot.send_message(chat_id=uid, text="👇 Use buttons below:", reply_markup=bottom_keyboard())
+            txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
+            await q.edit_message_text(txt, reply_markup=main_menu_keyboard())
+            try:
+                await context.bot.send_message(chat_id=uid, text="👇 Use buttons below:", reply_markup=bottom_keyboard())
+            except: pass
         else:
             await q.edit_message_text("❌ Not joined yet.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Verify", callback_data="check")]]))
         return
 
     if data == "main":
-        await q.edit_message_text("👑 APN NUMBER BOT\n\nMenu:", reply_markup=main_menu_keyboard(0))
+        await q.edit_message_text("Menu:", reply_markup=main_menu_keyboard(0))
         return
 
     if data == "live":
@@ -542,63 +576,108 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "support":
-        txt = "👨‍💼 Support\n\nContact: @PolasChandra"
-        kb = [[InlineKeyboardButton("📞 Contact Support", url=SUPPORT_ID)], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        txt = "☎ Contact support:"
+        kb = [[InlineKeyboardButton("✉ Contact Admin", url="https://t.me/PolasChandra")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "active":
         actives = get_active_numbers(uid)
         if not actives:
-            txt = "📊 Active Numbers\n\nNo active numbers yet."
+            txt = "📊 Active Number\n\nNo active numbers. Get a number first."
             kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
             return
-        txt = "📊 Your Active Numbers:\n\n"
-        for a in actives[-5:]:
-            txt += f"📞 {a['number']} - {a['country']} - {a['service']}\n"
-        kb = [[InlineKeyboardButton("⬅️ Back", callback_data="main")]]
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        return
-
-    if data == "refer":
-        user = get_user(uid)
-        bot_username = (await context.bot.get_me()).username
-        link = f"https://t.me/{bot_username}?start=ref_{uid}"
-        txt = f"👥 Refer & Earn\n\n🔗 Your Link:\n{link}\n\n👤 Referrals: {user.get('referrals',0)}\n🏆 Level: {user.get('level',1)}\n\n💰 Earn commission on each OTP!"
-        kb = [[InlineKeyboardButton("📤 Share Link", url=f"https://t.me/share/url?url={link}")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        last = actives[-1]
+        flag = FLAGS.get(last['country'].split("_")[0], "🌍")
+        txt = f"✅ Active Number\n\n{flag} {last['country'].replace('_FB','').title()}\nPlatform: {last['service']}\nNumber: {last['number']}"
+        kb = [
+            [InlineKeyboardButton(f"{last['number']}", copy_text=CopyTextButton(last['number']))],
+            [InlineKeyboardButton("📥 View OTP", url=OTP_GROUP), InlineKeyboardButton("🔄 Change", callback_data=f"c_{last['country']}")],
+            [InlineKeyboardButton("🔙 Back", callback_data="main")]
+        ]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "wallet":
         user = get_user(uid)
-        txt = f"💰 Wallet\n\n💵 Balance: ${user.get('balance',0):.4f}\n\nMethod: {user.get('wallet_method') or 'Not set'}\nAddress: {user.get('wallet_address') or 'Not set'}"
-        kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        method = user.get("wallet_method")
+        address = user.get("wallet_address")
+        balance = user.get("balance",0.0)
+        if method and address:
+            masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
+            if balance < 0.15:
+                txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            else:
+                txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}\n✅ Ready to withdraw!"
+            kb = [
+                [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
+                [InlineKeyboardButton("⬅️ Back", callback_data="main")]
+            ]
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            txt = f"💰 Wallet\n\n💰 Balance: ${balance:.4f}\n\nNo wallet set. Set your payment method first.\n🔻 Minimum withdraw: $0.15"
+            kb = [
+                [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")],
+                [InlineKeyboardButton("⬅️ Back", callback_data="main")]
+            ]
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "set_wallet":
-        txt = "💳 Select wallet method:"
-        kb = [[InlineKeyboardButton("💵 Binance Pay", callback_data="wm_Binance"), InlineKeyboardButton("💵 Bkash", callback_data="wm_Bkash")], [InlineKeyboardButton("💵 Nagad", callback_data="wm_Nagad"), InlineKeyboardButton("💵 USDT", callback_data="wm_USDT")], [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]]
+        txt = "💳 Set Payment Method\n\nSelect your preferred payment method:"
+        kb = [
+            [InlineKeyboardButton("⬜ BEP20", callback_data="setmethod_BEP20")],
+            [InlineKeyboardButton("🟣 Bybit", callback_data="setmethod_Bybit"), InlineKeyboardButton("🔷 Bitget", callback_data="setmethod_Bitget")],
+            [InlineKeyboardButton("🛡 Trust Wallet", callback_data="setmethod_Trust Wallet"), InlineKeyboardButton("🟡 Binance", callback_data="setmethod_Binance")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
+        ]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        return
-
-    if data.startswith("wm_"):
-        method = data[3:]
-        context.user_data["awaiting_wallet_for"]=method
-        await q.edit_message_text(f"✉️ Send your {method} address/wallet number:")
         return
 
     if data == "withdraw":
         user = get_user(uid)
-        if not user.get("wallet_address"):
-            await q.edit_message_text("❌ Set wallet first!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]]))
+        balance = user.get("balance",0.0)
+        method = user.get("wallet_method")
+        address = user.get("wallet_address")
+        if not method or not address:
+            txt = f"❌ No wallet set\n\n💰 Balance: ${balance:.4f}\n\nPlease set wallet first!"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]]
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
             return
-        if user.get("balance",0) < 1.0:
-            await q.edit_message_text(f"❌ Minimum $1.00 needed. Your balance: ${user.get('balance',0):.4f}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="wallet")]]))
-            return
-        txt = f"📤 Withdraw Request\n\nAmount: ${user.get('balance',0):.4f}\nMethod: {user.get('wallet_method')}\nAddress: {user.get('wallet_address')}\n\nContact support to withdraw: @PolasChandra"
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💼 Support", url=SUPPORT_ID)], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+        masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
+        if balance < 0.15:
+            txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            kb = [
+                [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
+                [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
+            ]
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${balance:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+            user["balance"]=0.0
+            save_user(uid, user)
+        return
+
+    if data == "refer":
+        user = get_user(uid)
+        refs = user.get("referrals",0)
+        level = user.get("level",1)
+        balance = user.get("balance",0.0)
+        if level==1: need=100
+        elif level==2: need=500
+        elif level==3: need=2000
+        elif level==4: need=5000
+        else: need=5000
+        progress_bar = "█" * min(10, int(refs/20)) + "░" * (10-min(10, int(refs/20)))
+        invite_link = f"https://t.me/{context.bot.username}?start=ref_{uid}"
+        txt = f"👥 Referral Dashboard\n━━━━━━━━━━━━━━━━━━\n\n🔥 Rank: Level {level}\n👥 Referrals: {refs}\n💰 Balance: ${balance:.4f}\n📊 Progress: [{progress_bar}] {refs}/{need}\n\n━━━━━━━━━━━━━━━━━━\n💎 Commission Tiers\n━━━━━━━━━━━━━━━━━━\n\n🔥 L1  $0.0002/OTP  (0+ refs)  ✦\n🌊 L2  $0.0005/OTP  (100+ refs)\n🦁 L3  $0.0006/OTP  (500+ refs)\n🛡 L4  $0.0070/OTP  (2000+ refs)\n👑 L5  $0.0100/OTP  (5000+ refs)\n\n🚀 Your Invite Link:\n{invite_link}"
+        kb = [
+            [InlineKeyboardButton("🔗 Copy Invite Link", callback_data=f"copy_{invite_link}")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="main")]
+        ]
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "services":
