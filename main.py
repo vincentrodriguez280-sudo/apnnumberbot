@@ -363,23 +363,40 @@ async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
 
-def main_menu_keyboard():
-    # Real Telegram buttons are always gray - color comes from emoji only
-    # UCHIHA promo images are edited, real bot also gray like your screenshot
+def main_menu_keyboard(anim_frame=0):
+    # Clean buttons - no green/blue stickers
+    frames = [
+        ["📱", "🌍", "📊", "👨‍💼", "👥", "💰"],
+        ["📲", "🌎", "📈", "👨‍💻", "👤", "💳"],
+        ["📳", "🌏", "📉", "🧑‍💼", "👫", "💵"],
+    ]
+    icons = frames[anim_frame % len(frames)]
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🟩 📱 Get Number", callback_data="services"), InlineKeyboardButton("🟦 🌍 Status", callback_data="live")],
-        [InlineKeyboardButton("🟩 📊 Active Number", callback_data="active"), InlineKeyboardButton("🟦 👨‍💼 Support", callback_data="support")],
-        [InlineKeyboardButton("🟩 👥 Refer", callback_data="refer"), InlineKeyboardButton("🟦 💰 Wallet", callback_data="wallet")]
+        [InlineKeyboardButton(f"{icons[0]} Get Number", callback_data="services"), InlineKeyboardButton(f"{icons[1]} Status", callback_data="live")],
+        [InlineKeyboardButton(f"{icons[2]} Active Number", callback_data="active"), InlineKeyboardButton(f"{icons[3]} Support", callback_data="support")],
+        [InlineKeyboardButton(f"{icons[4]} Refer", callback_data="refer"), InlineKeyboardButton(f"{icons[5]} Wallet", callback_data="wallet")]
     ])
 
+async def animate_menu_task(context, chat_id, message_id):
+    try:
+        for frame in range(6):
+            await asyncio.sleep(0.7)
+            kb = main_menu_keyboard(anim_frame=frame)
+            try:
+                await context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=kb)
+            except:
+                break
+        await context.bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=main_menu_keyboard(0))
+    except:
+        pass
+
 def bottom_keyboard():
-    # Bottom buttons - Telegram shows them gray, but we add color emoji
-    # In UCHIHA real bot they also appear gray like your screenshot - promo images are edited
+    # Clean bottom buttons - no green/blue
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("🟩 📱 Get Number"), KeyboardButton("🟦 🌍 Status")],
-            [KeyboardButton("🟩 📊 Active Number"), KeyboardButton("🟦 👨‍💼 Support")],
-            [KeyboardButton("🟩 👥 Refer"), KeyboardButton("🟦 💰 Wallet")]
+            [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
+            [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
+            [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")]
         ],
         resize_keyboard=True,
         is_persistent=True
