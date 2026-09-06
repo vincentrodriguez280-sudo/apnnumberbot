@@ -155,7 +155,11 @@ def format_for_inbox(country_code, full_number, service, otp_code):
         earn_text = "+$0.005"
     else:
         earn_text = "+$0.003"
-    text = f"{flag} {country_name}\n📞 `{full_number}`\n💳 Earned: {earn_text}\n\n🔑 OTP: `{otp_digits}`"
+    text = f"{flag} {country_name}
+📞 `{full_number}`
+💳 Earned: {earn_text}
+
+🔑 OTP: `{otp_digits}`"
     keyboard = [[InlineKeyboardButton(f"📋 {otp_digits}", callback_data=f"copy_{otp_digits}")]]
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -164,7 +168,14 @@ def format_for_group(country_code, full_number, service, otp_code):
     masked = mask_number(full_number)
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
     service_display = "TikTok" if service.upper() == "FACEBOOK" else service.title()
-    text = f"APN NUMBER BOT\n💳 #{clean} 📱 {service_display}\n\n╭─────────────────╮\n  {masked}  📱 {otp_digits}\n╰─────────────────╯\n\n🗣 Language: #English"
+    text = f"APN NUMBER BOT
+💳 #{clean} 📱 {service_display}
+
+╭─────────────────╮
+  {masked}  📱 {otp_digits}
+╰─────────────────╯
+
+🗣 Language: #English"
     keyboard = [[InlineKeyboardButton(f"🔓 {otp_digits}", callback_data=f"copy_{otp_digits}")], [InlineKeyboardButton("🧪 Panel", url="https://t.me/APNOfficial"), InlineKeyboardButton("📢 CHANNEL", url=CH1)]]
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -282,12 +293,17 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
     data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-    txt = f"📋 Ranges ({BASE_DIR}):\n\n"
+    txt = f"📋 Ranges ({BASE_DIR}):
+
+"
     for srv, ranges in data.items():
-        txt += f"{srv}:\n"
+        txt += f"{srv}:
+"
         for n, r in ranges.items():
-            txt += f"- {n} = {r}\n"
-        txt += "\n"
+            txt += f"- {n} = {r}
+"
+        txt += "
+"
     await update.message.reply_text(txt)
 
 # Auto backup to admin every 50 saves (Railway free protection)
@@ -297,7 +313,9 @@ async def auto_backup_task(bot):
         db = load_json(BAL_FILE, {})
         count = len(db)
         total_bal = sum([u.get("balance",0) for u in db.values()])
-        txt = f"🔄 Auto Backup - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n👥 Users: {count}\n💰 Total: ${total_bal:.4f}"
+        txt = f"🔄 Auto Backup - {datetime.now().strftime('%Y-%m-%d %H:%M')}
+👥 Users: {count}
+💰 Total: ${total_bal:.4f}"
         # Send to admin
         try:
             await bot.send_message(chat_id=ADMIN_ID, text=txt)
@@ -313,7 +331,14 @@ async def backup_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = load_json(BAL_FILE, {})
         count = len(db)
         total_bal = sum([u.get("balance",0) for u in db.values()])
-        txt = f"💾 Backup Info (FREE MODE)\n\n📁 Path: {BAL_FILE}\n👥 Users: {count}\n💰 Total Balance: ${total_bal:.4f}\n📂 Also saved in: ./balances.json\n\n⚠️ Railway free te redeploy e data delete hoy, tai backup file save kore rakho!"
+        txt = f"💾 Backup Info (FREE MODE)
+
+📁 Path: {BAL_FILE}
+👥 Users: {count}
+💰 Total Balance: ${total_bal:.4f}
+📂 Also saved in: ./balances.json
+
+⚠ Railway free te redeploy e data delete hoy, tai backup file save kore rakho!"
         await update.message.reply_text(txt)
         for fp in [BAL_FILE, "./balances.json", os.path.join(".", "balances.json")]:
             if os.path.exists(fp):
@@ -326,7 +351,10 @@ async def backup_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def restore_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    txt = f"📂 Data Path: {BASE_DIR} + ./\n\nFiles:\n"
+    txt = f"📂 Data Path: {BASE_DIR} + ./
+
+Files:
+"
     for fn in ["balances.json", "traffic.json", "success_traffic.json", "ranges.json", "wallets.json"]:
         found = []
         for base in [BASE_DIR, ".", "./"]:
@@ -335,10 +363,16 @@ async def restore_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 size = os.path.getsize(fp)
                 found.append(f"{base}/{fn} ({size}b)")
         if found:
-            txt += f"✅ {fn}: {' , '.join(found)}\n"
+            txt += f"✅ {fn}: {' , '.join(found)}
+"
         else:
-            txt += f"❌ {fn}: not found\n"
-    txt += f"\n💡 Way 2: Free te data safe rakhar jonno:\n1. /backup diye file download koro\n2. Update er age backup nao\n3. File harale /restore er jonno file upload koro"
+            txt += f"❌ {fn}: not found
+"
+    txt += f"
+💡 Way 2: Free te data safe rakhar jonno:
+1. /backup diye file download koro
+2. Update er age backup nao
+3. File harale /restore er jonno file upload koro"
     await update.message.reply_text(txt)
 
 async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -367,9 +401,9 @@ def main_menu_keyboard():
     # Real Telegram buttons are always gray - color comes from emoji only
     # UCHIHA promo images are edited, real bot also gray like your screenshot
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🟩 📱 Get Number", callback_data="services"), InlineKeyboardButton("🟦 🌍 Status", callback_data="live")],
-        [InlineKeyboardButton("🟩 📊 Active Number", callback_data="active"), InlineKeyboardButton("🟦 👨‍💼 Support", callback_data="support")],
-        [InlineKeyboardButton("🟩 👥 Refer", callback_data="refer"), InlineKeyboardButton("🟦 💰 Wallet", callback_data="wallet")]
+        [InlineKeyboardButton("📱 Get Number", callback_data="services"), InlineKeyboardButton("🌍 Status", callback_data="live")],
+        [InlineKeyboardButton("📊 Active Number", callback_data="active"), InlineKeyboardButton("👨💼 Support", callback_data="support")],
+        [InlineKeyboardButton("👥 Refer", callback_data="refer"), InlineKeyboardButton("💰 Wallet", callback_data="wallet")]
     ])
 
 def bottom_keyboard():
@@ -377,9 +411,9 @@ def bottom_keyboard():
     # In UCHIHA real bot they also appear gray like your screenshot - promo images are edited
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("🟩 📱 Get Number"), KeyboardButton("🟦 🌍 Status")],
-            [KeyboardButton("🟩 📊 Active Number"), KeyboardButton("🟦 👨‍💼 Support")],
-            [KeyboardButton("🟩 👥 Refer"), KeyboardButton("🟦 💰 Wallet")]
+            [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
+            [KeyboardButton("📊 Active Number"), KeyboardButton("👨💼 Support")],
+            [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -409,7 +443,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else: ref_user["level"]=1
                     save_user(ref_id, ref_user)
                     try:
-                        await context.bot.send_message(chat_id=int(ref_id), text=f"🎉 New referral! User {uid} joined via your link.\nTotal referrals: {ref_user['referrals']}")
+                        await context.bot.send_message(chat_id=int(ref_id), text=f"🎉 New referral! User {uid} joined via your link.
+Total referrals: {ref_user['referrals']}")
                     except: pass
         except: pass
 
@@ -425,13 +460,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             # Fallback for old clients
             await update.message.reply_text("🔥🔥🔥")
-        txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
+        txt = "✅ Verification Successful!
+Welcome to our platform.
+Enjoy a smooth and secure experience.
+
+Menu:"
         msg = await update.message.reply_text(txt, reply_markup=main_menu_keyboard(0))
         # Start norachora animation for inline buttons
         context.application.create_task(animate_menu_task(context, msg.chat_id, msg.message_id))
         await update.message.reply_text("👇 Use buttons below:", reply_markup=bottom_keyboard())
     else:
-        txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
+        txt = "⚠ Access Denied!
+Please join our channels to use the bot."
         kb = [
             [InlineKeyboardButton("Join Channel 1", url=CH1)],
             [InlineKeyboardButton("Join Channel 2", url=CH2)],
@@ -446,7 +486,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Check if awaiting wallet address
     method = context.user_data.get("awaiting_wallet_for")
-    if method and text not in ["📱 Get Number", "🌍 Status", "📊 Active Number", "👨‍💼 Support", "👥 Refer", "💰 Wallet"]:
+    if method and text not in ["📱 Get Number", "🌍 Status", "📊 Active Number", "👨💼 Support", "👥 Refer", "💰 Wallet"]:
         if len(text) < 10:
             await update.message.reply_text("❌ Invalid address. Send valid address.")
             return
@@ -455,53 +495,72 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         user["wallet_address"]=text
         save_user(uid, user)
         context.user_data["awaiting_wallet_for"]=None
-        txt = f"✅ Wallet Set!\n\n💵 Method: {method}\n✉️ Address:\n{text}"
+        txt = f"✅ Wallet Set!
+
+💵 Method: {method}
+✉ Address:
+{text}"
         kb = [
             [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
+            [InlineKeyboardButton("⬅ Back", callback_data="wallet")]
         ]
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         await update.message.reply_text("Menu:", reply_markup=main_menu_keyboard())
         return
 
     # Bottom keyboard handling - same as UCHIHA bot
-    if text in ["📱 Get Number", "🟩 📱 Get Number"]:
+    if text in ["📱 Get Number", "📱 Get Number"]:
         # Simulate services callback
-        txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
+        txt = "⚙ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
             icon = "📘" if s == "FACEBOOK" else "💬"
             name = "Facebook" if s == "FACEBOOK" else "WhatsApp"
             kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
-        kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
+        kb.append([InlineKeyboardButton("⬅ Back", callback_data="main")])
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
-    elif text in ["🌍 Status", "🟦 🌍 Status"]:
+    elif text in ["🌍 Status", "🌍 Status"]:
         succ_tr = load_json(SUCCESS_FILE, {})
         today = date.today().strftime("%-m/%-d/%Y")
-        msg = "🔥 LIVE-STOCK STATUS.💥\n\n📘 Facebook\n"
+        msg = "🔥 LIVE-STOCK STATUS.💥
+
+📘 Facebook
+"
         if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
                 flag = FLAGS.get(c.split("_")[0], "🌍")
                 price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
-                msg += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
+                msg += f"├─ {flag} {c.replace('_FB','').title()} — {price}
+"
         else:
-            msg += "├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n├─ 🇳🇵 Nepal — Free\n"
-        msg += "────────────────────\n"
-        msg += f"📅 Date: {today}\n"
+            msg += "├─ 🇲🇦 Morocco — $0.003$
+├─ 🇳🇬 Nigeria — $0.003$
+├─ 🇳🇵 Nepal — Free
+"
+        msg += "────────────────────
+"
+        msg += f"📅 Date: {today}
+"
         msg += "────────────────────"
-        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅ Back", callback_data="main")]]))
         return
     elif text == "📊 Active Number":
         actives = get_active_numbers(uid)
         if not actives:
-            msg = "📊 Active Number\n\nNo active numbers. Get a number first."
-            kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            msg = "📊 Active Number
+
+No active numbers. Get a number first."
+            kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
             return
         last = actives[-1]
         flag = FLAGS.get(last['country'].split("_")[0], "🌍")
-        msg = f"✅ Active Number\n\n{flag} {last['country'].replace('_FB','').title()}\nPlatform: {last['service']}\nNumber: {last['number']}"
+        msg = f"✅ Active Number
+
+{flag} {last['country'].replace('_FB','').title()}
+Platform: {last['service']}
+Number: {last['number']}"
         kb = [
             [InlineKeyboardButton(f"{last['number']}", callback_data=f"copy_{last['number']}")],
             [InlineKeyboardButton("📥 View OTP", url=OTP_GROUP), InlineKeyboardButton("🔄 Change", callback_data=f"c_{last['country']}")],
@@ -509,9 +568,9 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         ]
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
-    elif text == "👨‍💼 Support":
-        msg = "☎️ Contact support:"
-        kb = [[InlineKeyboardButton("✉️ Contact Admin", url="https://t.me/PolasChandra")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+    elif text == "👨💼 Support":
+        msg = "☎ Contact support:"
+        kb = [[InlineKeyboardButton("✉ Contact Admin", url="https://t.me/PolasChandra")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
     elif text == "👥 Refer":
@@ -526,8 +585,27 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         else: need=5000
         progress_bar = "█" * min(10, int(refs/20)) + "░" * (10-min(10, int(refs/20)))
         invite_link = f"https://t.me/{context.bot.username}?start=ref_{uid}"
-        msg = f"👥 Referral Dashboard\n━━━━━━━━━━━━━━━━━━\n\n🔥 Rank: Level {level}\n👥 Referrals: {refs}\n💰 Balance: ${balance:.4f}\n📊 Progress: [{progress_bar}] {refs}/{need}\n\n━━━━━━━━━━━━━━━━━━\n💎 Commission Tiers\n━━━━━━━━━━━━━━━━━━\n\n🔥 L1  $0.0002/OTP  (0+ refs)  ✦\n🌊 L2  $0.0005/OTP  (100+ refs)\n🦁 L3  $0.0006/OTP  (500+ refs)\n🛡️ L4  $0.0070/OTP  (2000+ refs)\n👑 L5  $0.0100/OTP  (5000+ refs)\n\n🚀 Your Invite Link:\n{invite_link}"
-        kb = [[InlineKeyboardButton("🔗 Copy Invite Link", callback_data=f"copy_{invite_link}")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        msg = f"👥 Referral Dashboard
+━━━━━━━━━━━━━━━━━━
+
+🔥 Rank: Level {level}
+👥 Referrals: {refs}
+💰 Balance: ${balance:.4f}
+📊 Progress: [{progress_bar}] {refs}/{need}
+
+━━━━━━━━━━━━━━━━━━
+💎 Commission Tiers
+━━━━━━━━━━━━━━━━━━
+
+🔥 L1  $0.0002/OTP  (0+ refs)  ✦
+🌊 L2  $0.0005/OTP  (100+ refs)
+🦁 L3  $0.0006/OTP  (500+ refs)
+🛡 L4  $0.0070/OTP  (2000+ refs)
+👑 L5  $0.0100/OTP  (5000+ refs)
+
+🚀 Your Invite Link:
+{invite_link}"
+        kb = [[InlineKeyboardButton("🔗 Copy Invite Link", callback_data=f"copy_{invite_link}")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
     elif text == "💰 Wallet":
@@ -538,14 +616,29 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if method and address:
             masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
             if balance < 0.15:
-                msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+                msg = f"💳 Method: {method}
+✉ Address: {masked}
+
+❌ Insufficient Balance
+
+💰 Balance: ${balance:.4f}
+🔻 Minimum: $0.15"
             else:
-                msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}\n✅ Ready to withdraw!"
-            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+                msg = f"💳 Method: {method}
+✉ Address: {masked}
+
+💰 Balance: ${balance:.4f}
+✅ Ready to withdraw!"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            msg = f"💰 Wallet\n\n💰 Balance: ${balance:.4f}\n\nNo wallet set. Set your payment method first.\n🔻 Minimum withdraw: $0.15"
-            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            msg = f"💰 Wallet
+
+💰 Balance: ${balance:.4f}
+
+No wallet set. Set your payment method first.
+🔻 Minimum withdraw: $0.15"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
 
@@ -562,7 +655,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Send copyable version
         try:
             await q.answer(f"📋 {val} Copied! Tap to copy below", show_alert=True)
-            await context.bot.send_message(chat_id=uid, text=f"`{val}`\n👆 Tap to copy", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=uid, text=f"`{val}`
+👆 Tap to copy", parse_mode="Markdown")
         except:
             await q.answer(f"📋 {val} Copied!", show_alert=False)
         return
@@ -570,14 +664,17 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("setmethod_"):
         method = data.replace("setmethod_","")
         context.user_data["awaiting_wallet_for"]=method
-        await q.edit_message_text(f"✉️ Send your {method} wallet address:\n\nExample: 0x0Bc20843c4452C6fAcAf7E1b757a00c0F79D6268")
+        await q.edit_message_text(f"✉ Send your {method} wallet address:
+
+Example: 0x0Bc20843c4452C6fAcAf7E1b757a00c0F79D6268")
         return
 
     if is_maintenance() and uid!= ADMIN_ID:
         await q.edit_message_text("🛠 System Under Maintenance")
         return
     if data!= "check" and not await is_joined(uid, context):
-        txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
+        txt = "⚠ Access Denied!
+Please join our channels to use the bot."
         kb = [
             [InlineKeyboardButton("Join Channel 1", url=CH1)],
             [InlineKeyboardButton("Join Channel 2", url=CH2)],
@@ -589,7 +686,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "check":
         if await is_joined(uid, context):
-            txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
+            txt = "✅ Verification Successful!
+Welcome to our platform.
+Enjoy a smooth and secure experience.
+
+Menu:"
             await q.edit_message_text(txt, reply_markup=main_menu_keyboard())
             try:
                 await context.bot.send_message(chat_id=uid, text="👇 Use buttons below:", reply_markup=bottom_keyboard())
@@ -615,30 +716,47 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
             # Always show Method, Address, Balance like UCHIHA screenshot
             if balance < 0.15:
-                txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+                txt = f"💳 Method: {method}
+✉ Address: {masked}
+
+❌ Insufficient Balance
+
+💰 Balance: ${balance:.4f}
+🔻 Minimum: $0.15"
             else:
-                txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}\n✅ Ready to withdraw!"
+                txt = f"💳 Method: {method}
+✉ Address: {masked}
+
+💰 Balance: ${balance:.4f}
+✅ Ready to withdraw!"
             kb = [
                 [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
-                [InlineKeyboardButton("⬅️ Back", callback_data="main")]
+                [InlineKeyboardButton("⬅ Back", callback_data="main")]
             ]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            txt = f"💰 Wallet\n\n💰 Balance: ${balance:.4f}\n\nNo wallet set. Set your payment method first.\n🔻 Minimum withdraw: $0.15"
+            txt = f"💰 Wallet
+
+💰 Balance: ${balance:.4f}
+
+No wallet set. Set your payment method first.
+🔻 Minimum withdraw: $0.15"
             kb = [
                 [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")],
-                [InlineKeyboardButton("⬅️ Back", callback_data="main")]
+                [InlineKeyboardButton("⬅ Back", callback_data="main")]
             ]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "set_wallet":
-        txt = "💳 Set Payment Method\n\nSelect your preferred payment method:"
+        txt = "💳 Set Payment Method
+
+Select your preferred payment method:"
         kb = [
             [InlineKeyboardButton("⬜ BEP20", callback_data="setmethod_BEP20")],
             [InlineKeyboardButton("🟣 Bybit", callback_data="setmethod_Bybit"), InlineKeyboardButton("🔷 Bitget", callback_data="setmethod_Bitget")],
-            [InlineKeyboardButton("🛡️ Trust Wallet", callback_data="setmethod_Trust Wallet"), InlineKeyboardButton("🟡 Binance", callback_data="setmethod_Binance")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
+            [InlineKeyboardButton("🛡 Trust Wallet", callback_data="setmethod_Trust Wallet"), InlineKeyboardButton("🟡 Binance", callback_data="setmethod_Binance")],
+            [InlineKeyboardButton("⬅ Back", callback_data="wallet")]
         ]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -649,21 +767,37 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         method = user.get("wallet_method")
         address = user.get("wallet_address")
         if not method or not address:
-            txt = f"❌ No wallet set\n\n💰 Balance: ${balance:.4f}\n\nPlease set wallet first!"
-            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]]
+            txt = f"❌ No wallet set
+
+💰 Balance: ${balance:.4f}
+
+Please set wallet first!"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅ Back", callback_data="wallet")]]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
             return
         masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
         if balance < 0.15:
-            txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            txt = f"💳 Method: {method}
+✉ Address: {masked}
+
+❌ Insufficient Balance
+
+💰 Balance: ${balance:.4f}
+🔻 Minimum: $0.15"
             kb = [
                 [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
-                [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
+                [InlineKeyboardButton("⬅ Back", callback_data="wallet")]
             ]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${balance:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
-            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+            txt = f"✅ Withdraw Requested
+
+💰 Amount: ${balance:.4f}
+💳 Method: {method}
+✉ Address: {masked}
+
+⏳ Will be processed within 24h"
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅ Back", callback_data="main")]]))
             # Reset balance after withdraw request
             user["balance"]=0.0
             save_user(uid, user)
@@ -682,30 +816,60 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: need=5000; prog=5000
         progress_bar = "█" * min(10, int(prog/20)) + "░" * (10-min(10, int(prog/20)))
         invite_link = f"https://t.me/{context.bot.username}?start=ref_{uid}"
-        txt = f"👥 Referral Dashboard\n━━━━━━━━━━━━━━━━━━\n\n🔥 Rank: Level {level}\n👥 Referrals: {refs}\n💰 Balance: ${balance:.4f}\n📊 Progress: [{progress_bar}] {refs}/{need}\n\n🎯 {100-refs if refs<100 else 500-refs if refs<500 else 2000-refs if refs<2000 else 5000-refs if refs<5000 else 0} more referrals → ✨ Level {level+1 if level<5 else 5}\n\n━━━━━━━━━━━━━━━━━━\n💎 Commission Tiers\n━━━━━━━━━━━━━━━━━━\n\n🔥 L1  $0.0002/OTP  (0+ refs)  ✦\n🌊 L2  $0.0005/OTP  (100+ refs)\n🦁 L3  $0.0006/OTP  (500+ refs)\n🛡️ L4  $0.0070/OTP  (2000+ refs)\n👑 L5  $0.0100/OTP  (5000+ refs)\n\n💡 Every OTP your referral receives\n= instant commission for you!\n\n🚀 Your Invite Link:\n{invite_link}"
+        txt = f"👥 Referral Dashboard
+━━━━━━━━━━━━━━━━━━
+
+🔥 Rank: Level {level}
+👥 Referrals: {refs}
+💰 Balance: ${balance:.4f}
+📊 Progress: [{progress_bar}] {refs}/{need}
+
+🎯 {100-refs if refs<100 else 500-refs if refs<500 else 2000-refs if refs<2000 else 5000-refs if refs<5000 else 0} more referrals → ✨ Level {level+1 if level<5 else 5}
+
+━━━━━━━━━━━━━━━━━━
+💎 Commission Tiers
+━━━━━━━━━━━━━━━━━━
+
+🔥 L1  $0.0002/OTP  (0+ refs)  ✦
+🌊 L2  $0.0005/OTP  (100+ refs)
+🦁 L3  $0.0006/OTP  (500+ refs)
+🛡 L4  $0.0070/OTP  (2000+ refs)
+👑 L5  $0.0100/OTP  (5000+ refs)
+
+💡 Every OTP your referral receives
+= instant commission for you!
+
+🚀 Your Invite Link:
+{invite_link}"
         kb = [
             [InlineKeyboardButton("🔗 Copy Invite Link", callback_data=f"copy_{invite_link}")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="main")]
+            [InlineKeyboardButton("⬅ Back", callback_data="main")]
         ]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "support":
-        txt = "☎️ Contact support:"
-        kb = [[InlineKeyboardButton("✉️ Contact Admin", url="https://t.me/PolasChandra")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        txt = "☎ Contact support:"
+        kb = [[InlineKeyboardButton("✉ Contact Admin", url="https://t.me/PolasChandra")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "active":
         actives = get_active_numbers(uid)
         if not actives:
-            txt = "📊 Active Number\n\nNo active numbers. Get a number first."
-            kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            txt = "📊 Active Number
+
+No active numbers. Get a number first."
+            kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅ Back", callback_data="main")]]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
             return
         last = actives[-1]
         flag = FLAGS.get(last['country'].split("_")[0], "🌍")
-        txt = f"✅ Active Number\n\n{flag} {last['country'].replace('_FB','').title()}\nPlatform: {last['service']}\nNumber: {last['number']}"
+        txt = f"✅ Active Number
+
+{flag} {last['country'].replace('_FB','').title()}
+Platform: {last['service']}
+Number: {last['number']}"
         kb = [
             [InlineKeyboardButton(f"{last['number']}", callback_data=f"copy_{last['number']}")],
             [InlineKeyboardButton("📥 View OTP", url=OTP_GROUP), InlineKeyboardButton("🔄 Change", callback_data=f"c_{last['country']}")],
@@ -717,29 +881,38 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "live":
         succ_tr = load_json(SUCCESS_FILE, {})
         today = date.today().strftime("%-m/%-d/%Y")
-        txt = "🔥 LIVE-STOCK STATUS.💥\n\n📘 Facebook\n"
+        txt = "🔥 LIVE-STOCK STATUS.💥
+
+📘 Facebook
+"
         if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
                 flag = FLAGS.get(c.split("_")[0], "🌍")
                 price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
-                txt += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
+                txt += f"├─ {flag} {c.replace('_FB','').title()} — {price}
+"
         else:
-            txt += "├─ 🇳🇵 Nepal — $0.005$\n├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n"
-        txt += "────────────────────\n"
-        txt += f"📅 Date: {today}\n"
+            txt += "├─ 🇳🇵 Nepal — $0.005$
+├─ 🇲🇦 Morocco — $0.003$
+├─ 🇳🇬 Nigeria — $0.003$
+"
+        txt += "────────────────────
+"
+        txt += f"📅 Date: {today}
+"
         txt += "────────────────────"
-        kb = [[InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        kb = [[InlineKeyboardButton("⬅ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data == "services":
-        txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
+        txt = "⚙ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
             icon = "📘" if s == "FACEBOOK" else "💬"
             name = "Facebook" if s == "FACEBOOK" else "WhatsApp"
             kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
-        kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
+        kb.append([InlineKeyboardButton("⬅ Back", callback_data="main")])
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
@@ -750,7 +923,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not countries and service.upper() == "FACEBOOK":
             countries = ["NEPAL_FB"]
         if not countries:
-            await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="services")]]))
+            await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅ Back", callback_data="services")]]))
             return
         seen_base = set()
         unique_countries = []
@@ -778,7 +951,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             price = PRICES.get(code.upper(), PRICES.get(base_key, PRICES.get("DEFAULT", "0.003$")))
             btn_text = f"{flag} {display} {price}"
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
-        kb.append([InlineKeyboardButton("⬅️ Back", callback_data="services")])
+        kb.append([InlineKeyboardButton("⬅ Back", callback_data="services")])
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
@@ -807,7 +980,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
         platform_name = "Facebook" if service.upper() == "FACEBOOK" else service.title()
-        header = f"────────── ⋆⋅☆⋅⋆ ──────────\n{flag} {display} Fresh Number 💸\n📱 {platform_name}\n────────── ⋆⋅☆⋅⋆ ──────────\n\n💫 Wait 5s Or Check The OTP Grup 🖤"
+        header = f"────────── ⋆⋅☆⋅⋆ ──────────
+{flag} {display} Fresh Number 💸
+📱 {platform_name}
+────────── ⋆⋅☆⋅⋆ ──────────
+
+💫 Wait 5s Or Check The OTP Grup 🖤"
         txt = header
         kb = []
         for o in nums:
