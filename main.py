@@ -457,26 +457,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
+    print(f"[BOTTOM] {uid} pressed: {text}")
+    
+    # Wallet address input - if awaiting wallet, but if user pressed menu button, cancel it
     method = context.user_data.get("awaiting_wallet_for")
-    if method and text not in ["📱 Get Number", "🌍 Status", "📊 Active Number", "👨‍💼 Support", "👥 Refer", "💰 Wallet"]:
-        if len(text) < 10:
-            await update.message.reply_text("❌ Invalid address. Send valid address.")
+    if method:
+        if any(k in text for k in ["Get Number", "Status", "Active Number", "Support", "Refer", "Wallet"]):
+            context.user_data["awaiting_wallet_for"] = None
+        else:
+            if len(text) < 10:
+                await update.message.reply_text("❌ Invalid address. Send valid address.")
+                return
+            user = get_user(uid)
+            user["wallet_method"]=method
+            user["wallet_address"]=text
+            save_user(uid, user)
+            context.user_data["awaiting_wallet_for"]=None
+            txt = f"✅ Wallet Set!\n\n💵 Method: {method}\n✉️ Address:\n{text}"
+            kb = [
+                [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
+                [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
+            ]
+            await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+            await update.message.reply_text("Menu:", reply_markup=main_menu_keyboard())
             return
-        user = get_user(uid)
-        user["wallet_method"]=method
-        user["wallet_address"]=text
-        save_user(uid, user)
-        context.user_data["awaiting_wallet_for"]=None
-        txt = f"✅ Wallet Set!\n\n💵 Method: {method}\n✉️ Address:\n{text}"
-        kb = [
-            [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
-        ]
-        await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        await update.message.reply_text("Menu:", reply_markup=main_menu_keyboard())
-        return
 
-    if text in ["📱 Get Number"]:
+    # ====== BOTTOM KEYBOARD - 6 BUTTONS - FIXED WITH 'in' CHECK ======
+    if "Get Number" in text:
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
@@ -486,7 +493,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
-    elif text in ["🌍 Status"]:
+    elif "Status" in text:
         succ_tr = load_json(SUCCESS_FILE, {})
         today = date.today().strftime("%-m/%-d/%Y")
         msg = "🔥 LIVE-STOCK STATUS.💥\n\n📘 Facebook\n"
@@ -496,11 +503,71 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                 price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
                 msg += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
         else:
-            msg += "├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n├─ 🇳🇵 Nepal — Free\n"
+            msg += "├─ 🇳🇵 Nepal — $0.005$\n├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n"
         msg += "────────────────────\n"
         msg += f"📅 Date: {today}\n"
         msg += "────────────────────"
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+        return
+    elif "Active Number" in text:
+        actives = get_active_numbers(uid)
+        if not actives:
+            msg = "📊 Active Number\n\nNo active numbers. Get a number first."
+            kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+            return
+        last = actives[-1]
+        flag = FLAGS.get(last['country'].split("_")[0], "🌍")
+        msg = f"✅ Active Number\n\n{flag} {last['country'].replace('_FB','').title()}\nPlatform: {last['service']}\nNumber: {last['number']}"
+        kb = [
+            [InlineKeyboardButton(f"{last['number']}", copy_text=CopyTextButton(last['number']))],
+            [InlineKeyboardButton("📥 View OTP", url=OTP_GROUP), InlineKeyboardButton("🔄 Change", callback_data=f"c_{last['country']}")],
+            [InlineKeyboardButton("🔙 Back", callback_data="main")]
+        ]
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        return
+    elif "Support" in text:
+        msg = "☎ Contact support:\n\nAdmin: @PolasChandra\nChannel: @APNOfficial"
+        kb = [[InlineKeyboardButton("✉ Contact Admin", url="https://t.me/PolasChandra")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        return
+    elif "Refer" in text:
+        user = get_user(uid)
+        refs = user.get("referrals",0)
+        level = user.get("level",1)
+        balance = user.get("balance",0.0)
+        if level==1: need=100
+        elif level==2: need=500
+        elif level==3: need=2000
+        elif level==4: need=5000
+        else: need=5000
+        progress_bar = "█" * min(10, int(refs/20)) + "░" * (10-min(10, int(refs/20)))
+        try:
+            bot_username = (await context.bot.get_me()).username
+            invite_link = f"https://t.me/{bot_username}?start=ref_{uid}"
+        except:
+            invite_link = f"https://t.me/APNNUMBERBOT?start=ref_{uid}"
+        msg = f"👥 Referral Dashboard\n━━━━━━━━━━━━━━━━━━\n\n🔥 Rank: Level {level}\n👥 Referrals: {refs}\n💰 Balance: ${balance:.4f}\n📊 Progress: [{progress_bar}] {refs}/{need}\n\n━━━━━━━━━━━━━━━━━━\n💎 Commission Tiers\n━━━━━━━━━━━━━━━━━━\n\n🔥 L1  $0.0002/OTP  (0+ refs)\n🌊 L2  $0.0005/OTP  (100+ refs)\n🦁 L3  $0.0006/OTP  (500+ refs)\n🛡 L4  $0.0070/OTP  (2000+ refs)\n👑 L5  $0.0100/OTP  (5000+ refs)\n\n🚀 Your Invite Link:\n{invite_link}"
+        kb = [[InlineKeyboardButton("🔗 Copy Invite Link", callback_data=f"copy_{invite_link}")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        return
+    elif "Wallet" in text:
+        user = get_user(uid)
+        method = user.get("wallet_method")
+        address = user.get("wallet_address")
+        balance = user.get("balance",0.0)
+        if method and address:
+            masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
+            if balance < 0.15:
+                msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            else:
+                msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}\n✅ Ready to withdraw!"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            msg = f"💰 Wallet\n\n💰 Balance: ${balance:.4f}\n\nNo wallet set. Set your payment method first.\n🔻 Minimum withdraw: $0.15"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
