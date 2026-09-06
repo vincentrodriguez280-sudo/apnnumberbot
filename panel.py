@@ -1,7 +1,12 @@
 import requests, re, json, os, threading
 from bs4 import BeautifulSoup
 
-BASE_DIR = "/app/data" if os.path.exists("/app/data") else "."
+BASE_DIR = "/data" if os.path.exists("/data") else ("/app/data" if os.path.exists("/app/data") else ".")
+# Auto create for Railway volume
+try:
+    os.makedirs(BASE_DIR, exist_ok=True)
+except:
+    pass
 RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
 NUMBERS_FILE = os.path.join(BASE_DIR, "numbers.txt")
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
