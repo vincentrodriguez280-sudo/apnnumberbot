@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from panel import create_order, get_otp, get_all_countries, get_display_name
 
 TOKEN = os.getenv("BOT_TOKEN")
-MUST_JOIN = ["@APNOfficial", "@APNOTP", "@APNOfficial"]
+MUST_JOIN = ["@APNOfficial", "@APNOTP", "@Proxystore999"]
 CH1 = "https://t.me/APNOfficial"
 CH2 = "https://t.me/APNOTP"
 CH3 = "https://t.me/Proxystore999"
@@ -38,7 +38,7 @@ FLAGS = {
     "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "MOZAMBIQUE": "🇲🇿", "ISRAEL": "🇮🇱",
 }
 PRICES = {
-    "NEPAL": "Free", "NEPAL_FB": "Free",
+    "NEPAL": "0.005$", "NEPAL_FB": "0.005$",
     "MOROCCO": "0.003$", "NIGERIA": "0.003$", "MOZAMBIQUE": "0.003$",
     "CAMEROON": "0.003$", "GUINEA": "0.003$", "MADAGASCAR": "0.003$",
     "MONTENEGRO": "0.003$", "UKRAINE": "0.003$", "HAITI": "0.003$",
@@ -116,9 +116,9 @@ def format_for_inbox(country_code, full_number, service, otp_code):
     country_name = clean.replace("_", " ").title()
     flag = FLAGS.get(clean, FLAGS.get(clean.split("_")[0], "🌍"))
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
-    # Earn logic: Nepal Free, others 0.003$
+    # Earn logic: Nepal 0.005$, others 0.003$
     if "NEPAL" in clean.upper():
-        earn_text = "Free"
+        earn_text = "+$0.005"
     else:
         earn_text = "+$0.003"
     text = f"{flag} {country_name}\n📞 `{full_number}`\n💳 Earned: {earn_text}\n\n🔑 OTP: `{otp_digits}`"
@@ -162,9 +162,9 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 except Exception as e:
                     print(f"[FAIL GROUP] {e}")
                 user = get_user(user_id)
-                # Facebook + Nepal = Free, baki 0.003$ per OTP
-                if "NEPAL" in country_code.upper() or service.upper() == "FACEBOOK":
-                    earn = 0.0
+                # Nepal 0.005$, baki country 0.003$ per OTP
+                if "NEPAL" in country_code.upper():
+                    earn = 0.005
                 else:
                     earn = 0.003
                 user["balance"]+=earn
@@ -363,7 +363,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                 price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
                 msg += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
         else:
-            msg += "├─ 🇲🇦 Morocco — $0.0065\n├─ 🇳🇬 Nigeria — $0.0072\n├─ 🇳🇵 Nepal — $0.0055$\n"
+            msg += "├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n├─ 🇳🇵 Nepal — Free\n"
         msg += "────────────────────\n"
         msg += f"📅 Date: {today}\n"
         msg += "────────────────────"
@@ -597,7 +597,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
                 txt += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
         else:
-            txt += "├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n├─ 🇳🇵 Nepal — Free\n"
+            txt += "├─ 🇳🇵 Nepal — $0.005$\n├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n"
         txt += "────────────────────\n"
         txt += f"📅 Date: {today}\n"
         txt += "────────────────────"
@@ -648,7 +648,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             display = get_display_name(code)
             base_key = code.upper().split("_")[0]
             flag = FLAGS.get(code.upper(), FLAGS.get(base_key, "🌍"))
-            price = PRICES.get(code.upper(), PRICES.get(base_key, "0.0065$"))
+            price = PRICES.get(code.upper(), PRICES.get(base_key, PRICES.get("DEFAULT", "0.003$")))
             btn_text = f"{flag} {display} {price}"
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="services")])
@@ -685,11 +685,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = []
         for o in nums:
             try:
-                # Telegram new copy_text feature - click to copy directly
-                from telegram import CopyTextButton
                 kb.append([InlineKeyboardButton(f"{o['number']}", copy_text=CopyTextButton(o['number']))])
             except:
-                # Fallback: old style with callback that shows Copied alert + also copies via message
                 kb.append([InlineKeyboardButton(f"{o['number']}", callback_data=f"copy_{o['number']}")])
         kb.append([InlineKeyboardButton("📥 View OTP", url=OTP_GROUP)])
         kb.append([InlineKeyboardButton("🔄 Change", callback_data=f"c_{country_code}"), InlineKeyboardButton("🔙 Back", callback_data=f"s_{service}")])
