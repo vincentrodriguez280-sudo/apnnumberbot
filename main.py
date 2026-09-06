@@ -5,9 +5,10 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from panel import create_order, get_otp, get_all_countries, get_display_name
 
 TOKEN = os.getenv("BOT_TOKEN")
-MUST_JOIN = ["@APNOfficial", "@APNOTP"]
+MUST_JOIN = ["@APNOfficial", "@APNOTP", "@APNOfficial"]  # 3 channels for UCHIHA style
 CH1 = "https://t.me/APNOfficial"
-CH2 = "https://t.me/+3N7St38N__ZkMTZl"
+CH2 = "https://t.me/APNOTP"
+CH3 = "https://t.me/Proxystore999"
 BOT_LINK = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 OTP_GROUP_ID = "@APNOTP"
@@ -20,6 +21,7 @@ TRAFFIC_FILE = os.path.join(BASE_DIR, "traffic.json")
 SUCCESS_FILE = os.path.join(BASE_DIR, "success_traffic.json")
 RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
 MAINT_FILE = os.path.join(BASE_DIR, "maintenance.json")
+ACTIVE_FILE = os.path.join(BASE_DIR, "active_numbers.json")
 
 if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
     try:
@@ -31,17 +33,26 @@ ADMIN_ID = 1853202569
 GROUP_NAME_TITLE = "APN OTP GROUP"
 COMMUNITY_URL = "https://t.me/APNOfficial"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
+
 FLAGS = {
     "NEPAL": "🇳🇵", "NEPAL_FB": "🇳🇵",
-    "CAMEROON": "🇨🇲",
-    "GUINEA": "🇬🇳", "GUNIEA": "🇬🇳",
+    "CAMEROON": "🇨🇲", "GUINEA": "🇬🇳", "GUNIEA": "🇬🇳",
     "MADAGASCAR": "🇲🇬", "MADAGASCAR_NEW_ACCOUNT": "🇲🇬", "MADAGASCAR_OLD_ACCOUNT": "🇲🇬",
-    "MONTENEGRO": "🇲🇪",
-    "UKRAINE": "🇺🇦",
-    "HAITI": "🇭🇹",
-    "SIERRA_LEONE": "🇸🇱",
-    "USA": "🇺🇸",
-    "USA_FB": "🇺🇸",
+    "MONTENEGRO": "🇲🇪", "UKRAINE": "🇺🇦", "HAITI": "🇭🇹",
+    "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "USA_FB": "🇺🇸",
+    "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "MOZAMBIQUE": "🇲🇿",
+    "ISRAEL": "🇮🇱",
+}
+
+# Price per country (sample style)
+PRICES = {
+    "NEPAL": "0.0055$", "NEPAL_FB": "0.0055$",
+    "MOROCCO": "0.0065$", "NIGERIA": "0.0072$",
+    "MOZAMBIQUE": "0.0055$", "CAMEROON": "0.0060$",
+    "GUINEA": "0.0060$", "MADAGASCAR": "0.0065$",
+    "MONTENEGRO": "0.0070$", "UKRAINE": "0.0075$",
+    "HAITI": "0.0060$", "SIERRA_LEONE": "0.0060$",
+    "USA": "0.0080$", "USA_FB": "0.0080$",
 }
 
 def load_json(f, default):
@@ -82,6 +93,19 @@ def add_success(country):
     tr[country] = tr.get(country,0)+1
     save_json(SUCCESS_FILE, tr)
 
+def save_active_number(uid, number, country, service):
+    db = load_json(ACTIVE_FILE, {})
+    uid=str(uid)
+    if uid not in db: db[uid]=[]
+    db[uid].append({"number": number, "country": country, "service": service, "time": datetime.now().isoformat()})
+    # keep last 20
+    db[uid]=db[uid][-20:]
+    save_json(ACTIVE_FILE, db)
+
+def get_active_numbers(uid):
+    db = load_json(ACTIVE_FILE, {})
+    return db.get(str(uid), [])
+
 def mask_number(num):
     n = num.replace(" ", "").replace("+", "").strip()
     if len(n) <= 6: return "+" + n
@@ -90,23 +114,23 @@ def mask_number(num):
 def format_for_inbox(country_code, full_number, service, otp_code):
     clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
     country_name = clean.replace("_", " ").title()
-    flag = FLAGS.get(clean, "🌍")
+    flag = FLAGS.get(clean, FLAGS.get(clean.split("_")[0], "🌍"))
     service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB"] else "WhatsApp"
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
-    # OTP COPY FIX - backticks = tap to copy
-    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {full_number}\n🧰 Service: {service_display}\n🔍 OTP: `{otp_digits}`"
-    keyboard = [[InlineKeyboardButton("🚀 Community", url=COMMUNITY_URL), InlineKeyboardButton("📱 Number", url=NUMBER_BOT_URL)]]
+    # UCHIHA style OTP inbox
+    text = f"{flag} {country_name}\n📞 `{full_number}`\n💳 Earned: +$0.0055\n💰 Balance: $0.0660\n\n🔑 OTP: `{otp_digits}`"
+    keyboard = [[InlineKeyboardButton(f"📋 {otp_digits}", callback_data=f"copy_{otp_digits}")]]
     return text, InlineKeyboardMarkup(keyboard)
 
 def format_for_group(country_code, full_number, service, otp_code):
     clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
     country_name = clean.replace("_", " ").title()
-    flag = FLAGS.get(clean, "🌍")
+    flag = FLAGS.get(clean, FLAGS.get(clean.split("_")[0], "🌍"))
     masked = mask_number(full_number)
-    service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB"] else "WhatsApp"
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
-    text = f"{GROUP_NAME_TITLE}\n🎉 NEW OTP RECEIVED 🎉\n\n🌍 Country: {country_name} {flag}\n📱 Number: {masked}\n🧰 Service: {service_display}\n🔍 OTP: `{otp_digits}`"
-    keyboard = [[InlineKeyboardButton("🚀 Community", url=COMMUNITY_URL), InlineKeyboardButton("📱 Number", url=NUMBER_BOT_URL)]]
+    service_display = "TikTok" if service.upper() == "FACEBOOK" else service.title()
+    text = f"APN NUMBER BOT\n💳 #{clean} 📱 {service_display}\n\n╭─────────────────╮\n  {masked}  📱 {otp_digits}\n╰─────────────────╯\n\n🗣 Language: #English"
+    keyboard = [[InlineKeyboardButton(f"🔓 {otp_digits}", callback_data=f"copy_{otp_digits}")], [InlineKeyboardButton("🧪 Panel", url=COMMUNITY_URL), InlineKeyboardButton("📢 CHANNEL", url=CH1)]]
     return text, InlineKeyboardMarkup(keyboard)
 
 async def is_joined(user_id, context):
@@ -212,6 +236,13 @@ async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
 
+def main_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📱 Get Number", callback_data="services"), InlineKeyboardButton("🌍 Status", callback_data="live")],
+        [InlineKeyboardButton("📊 Active Number", callback_data="active"), InlineKeyboardButton("👨‍💼 Support", callback_data="support")],
+        [InlineKeyboardButton("👥 Refer", callback_data="refer"), InlineKeyboardButton("💰 Wallet", callback_data="my_status")]
+    ])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if is_maintenance() and uid!= ADMIN_ID:
@@ -219,12 +250,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     get_user(uid)
     if await is_joined(uid, context):
-        kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
-        if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-        await update.message.reply_text("👑 APN NUMBER BOT\n\nWelcome!", reply_markup=InlineKeyboardMarkup(kb))
+        txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
+        await update.message.reply_text(txt, reply_markup=main_menu_keyboard())
     else:
-        kb = [[InlineKeyboardButton("📢 JOIN: APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 JOIN: APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 JOIN: PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 JOIN: APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await update.message.reply_text("⚠ Access Required", reply_markup=InlineKeyboardMarkup(kb))
+        txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
+        kb = [
+            [InlineKeyboardButton("Join Channel 1", url=CH1)],
+            [InlineKeyboardButton("Join Channel 2", url=CH2)],
+            [InlineKeyboardButton("Join Channel 3", url=CH3)],
+            [InlineKeyboardButton("✅ Verify", callback_data="check")]
+        ]
+        await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -232,67 +268,110 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
     try:
         await q.answer()
-    except: 
-        pass
+    except: pass
+
+    if data.startswith("copy_"):
+        otp = data.split("copy_")[1]
+        await q.answer(f"📋 OTP {otp} Copied!", show_alert=False)
+        return
+
     if is_maintenance() and uid!= ADMIN_ID:
         await q.edit_message_text("🛠 System Under Maintenance")
         return
     if data!= "check" and not await is_joined(uid, context):
-        kb = [[InlineKeyboardButton("📢 APN OFFICIAL", url=CH1)], [InlineKeyboardButton("📢 APN BACKUP", url=CH2)], [InlineKeyboardButton("🤖 PROXY BOT", url=BOT_LINK)], [InlineKeyboardButton("👥 APN OTP GROUP", url=OTP_GROUP)], [InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]
-        await q.edit_message_text("❌ Access Denied", reply_markup=InlineKeyboardMarkup(kb))
+        txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
+        kb = [
+            [InlineKeyboardButton("Join Channel 1", url=CH1)],
+            [InlineKeyboardButton("Join Channel 2", url=CH2)],
+            [InlineKeyboardButton("Join Channel 3", url=CH3)],
+            [InlineKeyboardButton("✅ Verify", callback_data="check")]
+        ]
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
+
     if data == "check":
         if await is_joined(uid, context):
-            kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
-            if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-            await q.edit_message_text("✅ Verified!", reply_markup=InlineKeyboardMarkup(kb))
+            txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
+            await q.edit_message_text(txt, reply_markup=main_menu_keyboard())
         else:
-            await q.edit_message_text("❌ Not joined yet.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CHECK JOINED", callback_data="check")]]))
+            await q.edit_message_text("❌ Not joined yet. Please join all channels and click Verify.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Verify", callback_data="check")]]))
         return
+
     if data == "main":
-        kb = [[InlineKeyboardButton("📞 GET NUMBER", callback_data="services"), InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("📊 LIVE TRAFFIC", callback_data="live"), InlineKeyboardButton("👑 MY STATUS", callback_data="my_status")], [InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)]]
-        if uid == ADMIN_ID: kb.append([InlineKeyboardButton("👑 ADMIN PANEL", callback_data="admin")])
-        await q.edit_message_text("👑 APN NUMBER BOT", reply_markup=InlineKeyboardMarkup(kb))
+        txt = "Menu:"
+        await q.edit_message_text(txt, reply_markup=main_menu_keyboard())
         return
+
     if data == "my_status":
         info = get_user(uid)
-        txt = f"👑 MY STATUS\n\n💳 Balance: ${info['balance']:.3f}\n📞 Total: {info['total']}"
-        kb = [[InlineKeyboardButton("💰 WITHDRAWAL", callback_data="withdrawal")], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
+        txt = f"💰 Wallet\n\n💳 Balance: ${info['balance']:.4f}\n📞 Total Orders: {info['total']}\n\nEarned: +$0.0055 per OTP"
+        kb = [[InlineKeyboardButton("⬅️ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
-    if data == "withdrawal":
-        info = get_user(uid)
-        txt = f"💰 WITHDRAWAL\n\n💳 Balance: ${info['balance']:.3f}\nMin: 50 BDT"
-        kb = [[InlineKeyboardButton("🆘 SUPPORT", url=SUPPORT_ID)], [InlineKeyboardButton("🔙 BACK", callback_data="main")]]
+
+    if data == "refer":
+        txt = f"👥 Refer System\n\n🔗 Your Refer Link:\nhttps://t.me/{context.bot.username}?start={uid}\n\n👥 Total Refer: 0\n💰 Earn: $0.001 per refer"
+        kb = [[InlineKeyboardButton("⬅️ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
+
+    if data == "support":
+        txt = "☎️ Contact support:"
+        kb = [[InlineKeyboardButton("✉️ Contact Admin", url=SUPPORT_ID)], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    if data == "active":
+        actives = get_active_numbers(uid)
+        if not actives:
+            txt = "📊 Active Number\n\nNo active numbers. Get a number first."
+            kb = [[InlineKeyboardButton("📱 Get Number", callback_data="services")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+            return
+        last = actives[-1]
+        flag = FLAGS.get(last['country'].split("_")[0], "🌍")
+        txt = f"✅ Active Number\n\n{flag} {last['country'].replace('_FB','').title()}\nPlatform: {last['service']}\nNumber: {last['number']}"
+        kb = [
+            [InlineKeyboardButton(f"{last['number']}", callback_data=f"copy_{last['number']}")],
+            [InlineKeyboardButton("📥 View OTP", url=OTP_GROUP), InlineKeyboardButton("🔄 Change", callback_data=f"c_{last['country']}")],
+            [InlineKeyboardButton("🔙 Back", callback_data="main")]
+        ]
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        return
+
     if data == "live":
         req_tr = load_json(TRAFFIC_FILE, {})
         succ_tr = load_json(SUCCESS_FILE, {})
-        txt = "📊 LIVE TRAFFIC\n\n"
+        from datetime import date
+        today = date.today().strftime("%-m/%-d/%Y")
+        txt = "🔥 LIVE-STOCK STATUS.💥\n\n"
+        # Show Paypal 1 style stock
+        txt += "💳 Paypal 1\n"
         if succ_tr:
-            for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:15]:
-                txt+=f"✅ {c}: {v} OTP\n"
-        txt += "\n📞 Requests:\n"
-        for c, v in sorted(req_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
-            txt+=f"📞 {c}: {v}\n"
-        kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
+            for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
+                flag = FLAGS.get(c.split("_")[0], "🌍")
+                price = PRICES.get(c.upper(), "0.0065$")
+                txt += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
+        else:
+            txt += "├─ 🇲🇦 Morocco — $0.0065\n├─ 🇳🇬 Nigeria — $0.0072\n├─ 🇳🇵 Nepal — $0.0055$\n"
+        txt += "────────────────────\n"
+        txt += f"📅 Date: {today}\n"
+        txt += "────────────────────"
+        kb = [[InlineKeyboardButton("⬅️ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
-    if data == "admin":
-        if uid!= ADMIN_ID: return
-        db = load_json(BAL_FILE, {})
-        succ = load_json(SUCCESS_FILE, {})
-        maint = "🔴 OFF" if is_maintenance() else "🟢 ON"
-        txt = f"👑 ADMIN\nUsers: {len(db)}\nSuccess: {sum(succ.values())}\nBot: {maint}\nData: {BASE_DIR}"
-        kb = [[InlineKeyboardButton("🔙 BACK", callback_data="main")]]
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        return
+
     if data == "services":
-        kb = [[InlineKeyboardButton(f"{s}", callback_data=f"s_{s}")] for s in SERVICES]
-        kb.append([InlineKeyboardButton("❌ CLOSE", callback_data="main")])
-        await q.edit_message_text("🔹 Select Service:", reply_markup=InlineKeyboardMarkup(kb))
+        txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
+        kb = []
+        for s in SERVICES:
+            icon = "💳" if s == "FACEBOOK" else "💬"
+            name = "Paypal 1" if s == "FACEBOOK" else "WhatsApp"
+            kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
+        kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
+
     if data.startswith("s_"):
         service = data[2:]
         context.user_data['service'] = service
@@ -300,10 +379,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not countries and service.upper() == "FACEBOOK":
             countries = ["NEPAL_FB"]
         if not countries:
-            await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="services")]]))
+            await q.edit_message_text(f"❌ No ranges for {service}!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="services")]]))
             return
-        ranges_data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-        kb = []
+        # Deduplicate Nepal
         seen_base = set()
         unique_countries = []
         for c in countries:
@@ -320,26 +398,30 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service.upper() == "FACEBOOK":
             unique_countries.insert(0, "NEPAL_FB")
         countries_sorted = unique_countries
+
+        platform_name = "Paypal 1" if service.upper() == "FACEBOOK" else service.title()
+        txt = f"💳 {platform_name} - দেশ সিলেক্ট করুন:"
+        kb = []
         for code in countries_sorted:
             display = get_display_name(code)
             base_key = code.upper().split("_")[0]
             flag = FLAGS.get(code.upper(), FLAGS.get(base_key, "🌍"))
-            if "NEPAL" in code.upper():
-                btn_text = f"{flag} Nepal"
-            else:
-                btn_text = f"{flag} {display}"
+            price = PRICES.get(code.upper(), PRICES.get(base_key, "0.0065$"))
+            btn_text = f"{flag} {display} {price}"
             kb.append([InlineKeyboardButton(btn_text, callback_data=f"c_{code}")])
-        kb.append([InlineKeyboardButton("↩ CHANGE SERVICE", callback_data="services")])
-        await q.edit_message_text(f"Service: {service}\nSelect country:", reply_markup=InlineKeyboardMarkup(kb))
+        kb.append([InlineKeyboardButton("⬅️ Back", callback_data="services")])
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
+
     if data.startswith("c_"):
         country_code = data[2:]
         service = context.user_data.get('service', 'FACEBOOK')
         display = get_display_name(country_code)
-        # Nepal = 3 numbers (file), Voltx = 6 numbers
+        flag = FLAGS.get(country_code.upper(), FLAGS.get(country_code.upper().split("_")[0], "🌍"))
         is_nepal = "NEPAL" in country_code.upper()
         num_count = 3 if is_nepal else 6
         await q.edit_message_text(f"⏳ Fetching {num_count} numbers for {display}...")
+
         nums = []
         for i in range(num_count):
             try:
@@ -350,17 +432,24 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if order:
                 nums.append(order)
                 add_request(uid, display)
+                save_active_number(uid, order['number'], country_code, service)
                 context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
                 await asyncio.sleep(0.5)
+
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
-        kb = [[InlineKeyboardButton("🌐 Change Country", callback_data=f"s_{service}")], [InlineKeyboardButton("🔄 Change Number", callback_data=f"c_{country_code}")], [InlineKeyboardButton("🛡 OTP Group", url=OTP_GROUP)]]
-        txt = f"YOUR {display} {service} {num_count} NUMBERS\n\n"
+
+        platform_name = "Paypal 1" if service.upper() == "FACEBOOK" else service.title()
+        # Fancy header like UCHIHA
+        header = f"────────── ⋆⋅☆⋅⋆ ──────────\n{flag} {display} Fresh Number 💸\n📱 {platform_name}\n────────── ⋆⋅☆⋅⋆ ──────────\n\n💫 Wait 5s Or Check The OTP Grup 🖤"
+        txt = header + "\n\n"
+        kb = []
         for o in nums:
-            txt += f"`{o['number']}`\n"
-        txt += f"\n⏳ OTP will be automatically forwarded to your Inbox and Group.\n👉 Tap number to copy!"
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+            kb.append([InlineKeyboardButton(f"{o['number']}", callback_data=f"copy_{o['number']}")])
+        kb.append([InlineKeyboardButton("📥 View OTP", url=OTP_GROUP)])
+        kb.append([InlineKeyboardButton("🔄 Change", callback_data=f"c_{country_code}"), InlineKeyboardButton("🔙 Back", callback_data=f"s_{service}")])
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
 from telegram.request import HTTPXRequest
