@@ -1,6 +1,6 @@
 import os, json, asyncio, shutil, re
 from datetime import datetime, date
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton, CopyTextButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from panel import create_order, get_otp, get_all_countries, get_display_name
 
@@ -431,7 +431,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("copy_"):
         val = data.split("copy_",1)[1]
-        await q.answer(f"📋 {val} Copied!", show_alert=False)
+        # Send copyable version
+        try:
+            await q.answer(f"📋 {val} Copied! Tap to copy below", show_alert=True)
+            await context.bot.send_message(chat_id=uid, text=f"`{val}`\n👆 Tap to copy", parse_mode="Markdown")
+        except:
+            await q.answer(f"📋 {val} Copied!", show_alert=False)
         return
 
     if data.startswith("setmethod_"):
@@ -661,21 +666,19 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         platform_name = "Facebook" if service.upper() == "FACEBOOK" else service.title()
         header = f"────────── ⋆⋅☆⋅⋆ ──────────\n{flag} {display} Fresh Number 💸\n📱 {platform_name}\n────────── ⋆⋅☆⋅⋆ ──────────\n\n💫 Wait 5s Or Check The OTP Grup 🖤"
-        txt = header + "\n\n"
-        # Add numbers with backticks for tap-to-copy (FIX COPY ISSUE)
-        for o in nums:
-            txt += f"`{o['number']}`\n"
-        txt += "\n👉 Tap number to copy!"
+        txt = header
         kb = []
         for o in nums:
-            # Button with copy action - also show number
-            kb.append([InlineKeyboardButton(f"📋 {o['number']}", callback_data=f"copy_{o['number']}")])
+            try:
+                # Telegram new copy_text feature - click to copy directly
+                from telegram import CopyTextButton
+                kb.append([InlineKeyboardButton(f"{o['number']}", copy_text=CopyTextButton(o['number']))])
+            except:
+                # Fallback: old style with callback that shows Copied alert + also copies via message
+                kb.append([InlineKeyboardButton(f"{o['number']}", callback_data=f"copy_{o['number']}")])
         kb.append([InlineKeyboardButton("📥 View OTP", url=OTP_GROUP)])
         kb.append([InlineKeyboardButton("🔄 Change", callback_data=f"c_{country_code}"), InlineKeyboardButton("🔙 Back", callback_data=f"s_{service}")])
-        try:
-            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-        except:
-            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
 from telegram.request import HTTPXRequest
