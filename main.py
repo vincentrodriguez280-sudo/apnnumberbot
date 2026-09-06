@@ -303,9 +303,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     get_user(uid)
     if await is_joined(uid, context):
+        # Animated welcome like UCHIHA - using animated emoji effect
+        try:
+            # Fire animation effect (works on latest Telegram)
+            await update.message.reply_text("🔥", message_effect_id="5107584321108051014")
+        except:
+            # Fallback for old clients
+            await update.message.reply_text("🔥🔥🔥")
         txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
         await update.message.reply_text(txt, reply_markup=main_menu_keyboard())
-        # Send bottom keyboard like UCHIHA bot
         await update.message.reply_text("👇 Use buttons below:", reply_markup=bottom_keyboard())
     else:
         txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
@@ -342,7 +348,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # Bottom keyboard handling - same as UCHIHA bot
-    if text == "📱 Get Number":
+    if text in ["📱 Get Number", "🟩 📱 Get Number"]:
         # Simulate services callback
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
@@ -353,7 +359,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
-    elif text == "🌍 Status":
+    elif text in ["🌍 Status", "🟦 🌍 Status"]:
         succ_tr = load_json(SUCCESS_FILE, {})
         today = date.today().strftime("%-m/%-d/%Y")
         msg = "🔥 LIVE-STOCK STATUS.💥\n\n📘 Facebook\n"
