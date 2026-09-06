@@ -4,6 +4,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKe
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from panel import create_order, get_otp, get_all_countries, get_display_name
 
+# Railway free - no volume, so we use current dir + auto backup to admin
+print("[FREE MODE] Using JSON + Auto Backup to Telegram")
+
 TOKEN = os.getenv("BOT_TOKEN")
 MUST_JOIN = ["@APNOfficial", "@APNOTP", "@Proxystore999"]
 CH1 = "https://t.me/APNOfficial"
@@ -14,7 +17,16 @@ OTP_GROUP_ID = "@APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
 
-BASE_DIR = "/app/data" if os.path.exists("/app/data") else "."
+BASE_DIR = "/app/data"
+# Railway er jonno /app/data always create korbo - Volume mount korle data harabe na
+try:
+    os.makedirs(BASE_DIR, exist_ok=True)
+except:
+    BASE_DIR = "."
+    try:
+        os.makedirs(BASE_DIR, exist_ok=True)
+    except:
+        pass
 BAL_FILE = os.path.join(BASE_DIR, "balances.json")
 TRAFFIC_FILE = os.path.join(BASE_DIR, "traffic.json")
 SUCCESS_FILE = os.path.join(BASE_DIR, "success_traffic.json")
@@ -46,16 +58,33 @@ PRICES = {
     "DEFAULT": "0.003$",
 }
 
+# Railway free: data folder check
+BASE_DIR_FALLBACK = "."
+if not os.path.exists(BASE_DIR):
+    try:
+        os.makedirs(BASE_DIR, exist_ok=True)
+    except:
+        BASE_DIR = "."
+
 def load_json(f, default):
-    if os.path.exists(f):
-        try:
-            with open(f,'r') as fp: return json.load(fp)
-        except: return default
+    # Try primary path, then fallback
+    for path in [f, os.path.join(".", os.path.basename(f)), os.path.join(BASE_DIR_FALLBACK, os.path.basename(f))]:
+        if os.path.exists(path):
+            try:
+                with open(path,'r') as fp: 
+                    data = json.load(fp)
+                    if data: 
+                        return data
+            except: continue
     return default
 
 def save_json(f, data):
-    os.makedirs(os.path.dirname(f) if os.path.dirname(f) else ".", exist_ok=True)
-    with open(f,'w') as fp: json.dump(data, fp, indent=2)
+    # Save to both places for safety on Railway free
+    for path in [f, os.path.join(".", os.path.basename(f))]:
+        try:
+            os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
+            with open(path,'w') as fp: json.dump(data, fp, indent=2)
+        except: pass
 
 def is_maintenance():
     return load_json(MAINT_FILE, {"enabled": False}).get("enabled", False)
@@ -66,7 +95,6 @@ def get_user(uid):
     if uid not in db:
         db[uid]={"balance":0.0,"requests":[],"total":0,"ref":0,"referrals":0,"level":1,"wallet_method":None,"wallet_address":None,"referred_by":None}
         save_json(BAL_FILE, db)
-    # migrate old users
     if "referrals" not in db[uid]: db[uid]["referrals"]=0
     if "level" not in db[uid]: db[uid]["level"]=1
     if "wallet_method" not in db[uid]: db[uid]["wallet_method"]=None
@@ -79,6 +107,9 @@ def save_user(uid, data):
     db = load_json(BAL_FILE, {})
     db[str(uid)]=data
     save_json(BAL_FILE, db)
+
+# Auto backup counter
+backup_counter = {"count": 0}
 
 def add_request(uid, country):
     user = get_user(uid)
@@ -169,6 +200,14 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                     earn = 0.003
                 user["balance"]+=earn
                 save_user(user_id, user)
+                # Auto backup every 20 OTP (free mode protection)
+                backup_counter["count"] += 1
+                if backup_counter["count"] >= 20:
+                    backup_counter["count"] = 0
+                    try:
+                        context.application.create_task(auto_backup_task(context.bot))
+                    except:
+                        pass
                 print(f"[BALANCE] User {user_id} +${earn} -> ${user['balance']:.4f} | {country_code} {service}")
                 # commission to referrer
                 if user.get("referred_by"):
@@ -247,6 +286,76 @@ async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
             txt += f"- {n} = {r}\n"
         txt += "\n"
     await update.message.reply_text(txt)
+
+# Auto backup to admin every 50 saves (Railway free protection)
+async def auto_backup_task(bot):
+    try:
+        if not os.path.exists(BAL_FILE): return
+        db = load_json(BAL_FILE, {})
+        count = len(db)
+        total_bal = sum([u.get("balance",0) for u in db.values()])
+        txt = f"🔄 Auto Backup - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n👥 Users: {count}\n💰 Total: ${total_bal:.4f}"
+        # Send to admin
+        try:
+            await bot.send_message(chat_id=ADMIN_ID, text=txt)
+            await bot.send_document(chat_id=ADMIN_ID, document=open(BAL_FILE, 'rb'), filename=f"backup_{datetime.now().strftime('%Y%m%d_%H%M')}_balances.json")
+        except Exception as e:
+            print(f"[AUTO BACKUP ERR] {e}")
+    except Exception as e:
+        print(f"[AUTO BACKUP ERR] {e}")
+
+async def backup_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID: return
+    try:
+        db = load_json(BAL_FILE, {})
+        count = len(db)
+        total_bal = sum([u.get("balance",0) for u in db.values()])
+        txt = f"💾 Backup Info (FREE MODE)\n\n📁 Path: {BAL_FILE}\n👥 Users: {count}\n💰 Total Balance: ${total_bal:.4f}\n📂 Also saved in: ./balances.json\n\n⚠️ Railway free te redeploy e data delete hoy, tai backup file save kore rakho!"
+        await update.message.reply_text(txt)
+        for fp in [BAL_FILE, "./balances.json", os.path.join(".", "balances.json")]:
+            if os.path.exists(fp):
+                try:
+                    await update.message.reply_document(document=open(fp, 'rb'), filename="balances.json")
+                    break
+                except: continue
+    except Exception as e:
+        await update.message.reply_text(f"❌ Backup error: {e}")
+
+async def restore_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID: return
+    txt = f"📂 Data Path: {BASE_DIR} + ./\n\nFiles:\n"
+    for fn in ["balances.json", "traffic.json", "success_traffic.json", "ranges.json", "wallets.json"]:
+        found = []
+        for base in [BASE_DIR, ".", "./"]:
+            fp = os.path.join(base, fn)
+            if os.path.exists(fp):
+                size = os.path.getsize(fp)
+                found.append(f"{base}/{fn} ({size}b)")
+        if found:
+            txt += f"✅ {fn}: {' , '.join(found)}\n"
+        else:
+            txt += f"❌ {fn}: not found\n"
+    txt += f"\n💡 Way 2: Free te data safe rakhar jonno:\n1. /backup diye file download koro\n2. Update er age backup nao\n3. File harale /restore er jonno file upload koro"
+    await update.message.reply_text(txt)
+
+async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID: return
+    if not update.message.document: return
+    fname = update.message.document.file_name
+    if "balances" not in fname.lower() and "backup" not in fname.lower():
+        await update.message.reply_text("❌ Please upload balances.json or backup_*.json")
+        return
+    try:
+        file = await context.bot.get_file(update.message.document.file_id)
+        # Download to both locations
+        for path in [BAL_FILE, "./balances.json"]:
+            try:
+                await file.download_to_drive(path)
+            except: pass
+        db = load_json(BAL_FILE, {})
+        await update.message.reply_text(f"✅ Restored! Users: {len(db)}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Restore failed: {e}")
 
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
@@ -728,6 +837,9 @@ app.add_handler(CommandHandler("list", list_range))
 app.add_handler(CommandHandler("off", bot_off))
 app.add_handler(CommandHandler("on", bot_on))
 app.add_handler(CommandHandler("botstatus", bot_status))
+app.add_handler(CommandHandler("backup", backup_data))
+app.add_handler(CommandHandler("data", restore_info))
+app.add_handler(MessageHandler(filters.Document.ALL, handle_restore_file))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 app.add_handler(CallbackQueryHandler(handle))
 app.run_polling(drop_pending_updates=True)
