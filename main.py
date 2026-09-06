@@ -38,9 +38,12 @@ FLAGS = {
     "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "MOZAMBIQUE": "🇲🇿", "ISRAEL": "🇮🇱",
 }
 PRICES = {
-    "NEPAL": "0.0055$", "NEPAL_FB": "0.0055$",
-    "MOROCCO": "0.0065$", "NIGERIA": "0.0072$", "MOZAMBIQUE": "0.0055$",
-    "CAMEROON": "0.0060$", "GUINEA": "0.0060$", "MADAGASCAR": "0.0065$",
+    "NEPAL": "Free", "NEPAL_FB": "Free",
+    "MOROCCO": "0.003$", "NIGERIA": "0.003$", "MOZAMBIQUE": "0.003$",
+    "CAMEROON": "0.003$", "GUINEA": "0.003$", "MADAGASCAR": "0.003$",
+    "MONTENEGRO": "0.003$", "UKRAINE": "0.003$", "HAITI": "0.003$",
+    "SIERRA_LEONE": "0.003$", "USA": "0.003$", "USA_FB": "0.003$",
+    "DEFAULT": "0.003$",
 }
 
 def load_json(f, default):
@@ -154,7 +157,14 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 except Exception as e:
                     print(f"[FAIL GROUP] {e}")
                 user = get_user(user_id)
-                user["balance"]+=0.0055
+                # Nepal free, others 0.003$
+                is_free = "NEPAL" in country_code.upper() or "FACEBOOK" in service.upper() and "NEPAL" in country_code.upper()
+                # Actually Nepal is free as per request, others 0.003$
+                if "NEPAL" in country_code.upper():
+                    earn = 0.0
+                else:
+                    earn = 0.003
+                user["balance"]+=earn
                 save_user(user_id, user)
                 # commission to referrer
                 if user.get("referred_by"):
@@ -652,12 +662,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         platform_name = "Facebook" if service.upper() == "FACEBOOK" else service.title()
         header = f"────────── ⋆⋅☆⋅⋆ ──────────\n{flag} {display} Fresh Number 💸\n📱 {platform_name}\n────────── ⋆⋅☆⋅⋆ ──────────\n\n💫 Wait 5s Or Check The OTP Grup 🖤"
         txt = header + "\n\n"
+        # Add numbers with backticks for tap-to-copy (FIX COPY ISSUE)
+        for o in nums:
+            txt += f"`{o['number']}`\n"
+        txt += "\n👉 Tap number to copy!"
         kb = []
         for o in nums:
-            kb.append([InlineKeyboardButton(f"{o['number']}", callback_data=f"copy_{o['number']}")])
+            # Button with copy action - also show number
+            kb.append([InlineKeyboardButton(f"📋 {o['number']}", callback_data=f"copy_{o['number']}")])
         kb.append([InlineKeyboardButton("📥 View OTP", url=OTP_GROUP)])
         kb.append([InlineKeyboardButton("🔄 Change", callback_data=f"c_{country_code}"), InlineKeyboardButton("🔙 Back", callback_data=f"s_{service}")])
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        try:
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        except:
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
 
 from telegram.request import HTTPXRequest
