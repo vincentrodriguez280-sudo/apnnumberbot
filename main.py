@@ -17,16 +17,20 @@ OTP_GROUP_ID = "@APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
 SERVICES = ["FACEBOOK", "WHATSAPP"]
 
-BASE_DIR = "/app/data"
-# Railway er jonno /app/data always create korbo - Volume mount korle data harabe na
-try:
-    os.makedirs(BASE_DIR, exist_ok=True)
-except:
-    BASE_DIR = "."
+# Railway volume mount path - tomar ta /data te mount kora ache screenshot e
+for p in ["/data", "/app/data", "."]:
     try:
-        os.makedirs(BASE_DIR, exist_ok=True)
+        if os.path.exists(p) or p in ["/data", "/app/data"]:
+            os.makedirs(p, exist_ok=True)
+            if os.path.exists(p):
+                BASE_DIR = p
+                print(f"[DATA] Using {BASE_DIR} (Volume found)" if p=="/data" else f"[DATA] Using {BASE_DIR}")
+                break
     except:
-        pass
+        continue
+else:
+    BASE_DIR = "."
+    os.makedirs(BASE_DIR, exist_ok=True)
 BAL_FILE = os.path.join(BASE_DIR, "balances.json")
 TRAFFIC_FILE = os.path.join(BASE_DIR, "traffic.json")
 SUCCESS_FILE = os.path.join(BASE_DIR, "success_traffic.json")
@@ -58,13 +62,12 @@ PRICES = {
     "DEFAULT": "0.003$",
 }
 
-# Railway free: data folder check
+# Fallback check
 BASE_DIR_FALLBACK = "."
-if not os.path.exists(BASE_DIR):
-    try:
-        os.makedirs(BASE_DIR, exist_ok=True)
-    except:
-        BASE_DIR = "."
+try:
+    os.makedirs(BASE_DIR, exist_ok=True)
+except:
+    BASE_DIR = "."
 
 def load_json(f, default):
     # Try primary path, then fallback
