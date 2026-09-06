@@ -116,7 +116,12 @@ def format_for_inbox(country_code, full_number, service, otp_code):
     country_name = clean.replace("_", " ").title()
     flag = FLAGS.get(clean, FLAGS.get(clean.split("_")[0], "🌍"))
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
-    text = f"{flag} {country_name}\n📞 `{full_number}`\n💳 Earned: +$0.0055\n💰 Balance: $0.0660\n\n🔑 OTP: `{otp_digits}`"
+    # Earn logic: Nepal Free, others 0.003$
+    if "NEPAL" in clean.upper():
+        earn_text = "Free"
+    else:
+        earn_text = "+$0.003"
+    text = f"{flag} {country_name}\n📞 `{full_number}`\n💳 Earned: {earn_text}\n\n🔑 OTP: `{otp_digits}`"
     keyboard = [[InlineKeyboardButton(f"📋 {otp_digits}", callback_data=f"copy_{otp_digits}")]]
     return text, InlineKeyboardMarkup(keyboard)
 
@@ -157,15 +162,14 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 except Exception as e:
                     print(f"[FAIL GROUP] {e}")
                 user = get_user(user_id)
-                # Nepal free, others 0.003$
-                is_free = "NEPAL" in country_code.upper() or "FACEBOOK" in service.upper() and "NEPAL" in country_code.upper()
-                # Actually Nepal is free as per request, others 0.003$
-                if "NEPAL" in country_code.upper():
+                # Facebook + Nepal = Free, baki 0.003$ per OTP
+                if "NEPAL" in country_code.upper() or service.upper() == "FACEBOOK":
                     earn = 0.0
                 else:
                     earn = 0.003
                 user["balance"]+=earn
                 save_user(user_id, user)
+                print(f"[BALANCE] User {user_id} +${earn} -> ${user['balance']:.4f} | {country_code} {service}")
                 # commission to referrer
                 if user.get("referred_by"):
                     ref_user = get_user(user["referred_by"])
@@ -356,7 +360,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
                 flag = FLAGS.get(c.split("_")[0], "🌍")
-                price = PRICES.get(c.upper(), "0.0065$")
+                price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
                 msg += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
         else:
             msg += "├─ 🇲🇦 Morocco — $0.0065\n├─ 🇳🇬 Nigeria — $0.0072\n├─ 🇳🇵 Nepal — $0.0055$\n"
@@ -410,13 +414,14 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         balance = user.get("balance",0.0)
         if method and address:
             masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
-            msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}"
             if balance < 0.15:
-                msg = f"❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+                msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            else:
+                msg = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}\n✅ Ready to withdraw!"
             kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            msg = "💰 Wallet\n\nNo wallet set. Set your payment method first."
+            msg = f"💰 Wallet\n\n💰 Balance: ${balance:.4f}\n\nNo wallet set. Set your payment method first.\n🔻 Minimum withdraw: $0.15"
             kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="main")]]
             await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kb))
         return
@@ -481,19 +486,18 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance = user.get("balance",0.0)
         if method and address:
             masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
-            txt = f"💳 Method: {method}\n✉️ Address: {masked}"
+            # Always show Method, Address, Balance like UCHIHA screenshot
+            if balance < 0.15:
+                txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            else:
+                txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n💰 Balance: ${balance:.4f}\n✅ Ready to withdraw!"
             kb = [
                 [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
                 [InlineKeyboardButton("⬅️ Back", callback_data="main")]
             ]
-            # show balance status like UCHIHA
-            if balance < 0.15:
-                txt2 = f"❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
-                await q.edit_message_text(txt2, reply_markup=InlineKeyboardMarkup(kb))
-            else:
-                await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            txt = "💰 Wallet\n\nNo wallet set. Set your payment method first."
+            txt = f"💰 Wallet\n\n💰 Balance: ${balance:.4f}\n\nNo wallet set. Set your payment method first.\n🔻 Minimum withdraw: $0.15"
             kb = [
                 [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")],
                 [InlineKeyboardButton("⬅️ Back", callback_data="main")]
@@ -515,16 +519,27 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "withdraw":
         user = get_user(uid)
         balance = user.get("balance",0.0)
+        method = user.get("wallet_method")
+        address = user.get("wallet_address")
+        if not method or not address:
+            txt = f"❌ No wallet set\n\n💰 Balance: ${balance:.4f}\n\nPlease set wallet first!"
+            kb = [[InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet")], [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]]
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+            return
+        masked = address[:8]+"••••••••••••"+address[-6:] if len(address)>20 else address
         if balance < 0.15:
-            txt = f"❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
+            txt = f"💳 Method: {method}\n✉️ Address: {masked}\n\n❌ Insufficient Balance\n\n💰 Balance: ${balance:.4f}\n🔻 Minimum: $0.15"
             kb = [
                 [InlineKeyboardButton("💳 Set Wallet", callback_data="set_wallet"), InlineKeyboardButton("📤 Withdraw", callback_data="withdraw")],
                 [InlineKeyboardButton("⬅️ Back", callback_data="wallet")]
             ]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${balance:.4f}\n💳 Method: {user.get('wallet_method')}\n\n⏳ Will be processed within 24h"
+            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${balance:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+            # Reset balance after withdraw request
+            user["balance"]=0.0
+            save_user(uid, user)
         return
 
     if data == "refer":
@@ -579,10 +594,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
                 flag = FLAGS.get(c.split("_")[0], "🌍")
-                price = PRICES.get(c.upper(), "0.0065$")
+                price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
                 txt += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
         else:
-            txt += "├─ 🇲🇦 Morocco — $0.0065\n├─ 🇳🇬 Nigeria — $0.0072\n├─ 🇳🇵 Nepal — $0.0055$\n"
+            txt += "├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n├─ 🇳🇵 Nepal — Free\n"
         txt += "────────────────────\n"
         txt += f"📅 Date: {today}\n"
         txt += "────────────────────"
