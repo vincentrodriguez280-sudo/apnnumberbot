@@ -252,19 +252,22 @@ async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
 
 def main_menu_keyboard():
+    # Real Telegram buttons are always gray - color comes from emoji only
+    # UCHIHA promo images are edited, real bot also gray like your screenshot
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📱 Get Number", callback_data="services"), InlineKeyboardButton("🌍 Status", callback_data="live")],
-        [InlineKeyboardButton("📊 Active Number", callback_data="active"), InlineKeyboardButton("👨‍💼 Support", callback_data="support")],
-        [InlineKeyboardButton("👥 Refer", callback_data="refer"), InlineKeyboardButton("💰 Wallet", callback_data="wallet")]
+        [InlineKeyboardButton("🟩 📱 Get Number", callback_data="services"), InlineKeyboardButton("🟦 🌍 Status", callback_data="live")],
+        [InlineKeyboardButton("🟩 📊 Active Number", callback_data="active"), InlineKeyboardButton("🟦 👨‍💼 Support", callback_data="support")],
+        [InlineKeyboardButton("🟩 👥 Refer", callback_data="refer"), InlineKeyboardButton("🟦 💰 Wallet", callback_data="wallet")]
     ])
 
 def bottom_keyboard():
-    # UCHIHA style bottom persistent buttons - green/blue like in screenshot
+    # Bottom buttons - Telegram shows them gray, but we add color emoji
+    # In UCHIHA real bot they also appear gray like your screenshot - promo images are edited
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
-            [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
-            [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")]
+            [KeyboardButton("🟩 📱 Get Number"), KeyboardButton("🟦 🌍 Status")],
+            [KeyboardButton("🟩 📊 Active Number"), KeyboardButton("🟦 👨‍💼 Support")],
+            [KeyboardButton("🟩 👥 Refer"), KeyboardButton("🟦 💰 Wallet")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -311,7 +314,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Fallback for old clients
             await update.message.reply_text("🔥🔥🔥")
         txt = "✅ Verification Successful!\nWelcome to our platform.\nEnjoy a smooth and secure experience.\n\nMenu:"
-        await update.message.reply_text(txt, reply_markup=main_menu_keyboard())
+        msg = await update.message.reply_text(txt, reply_markup=main_menu_keyboard(0))
+        # Start norachora animation for inline buttons
+        context.application.create_task(animate_menu_task(context, msg.chat_id, msg.message_id))
         await update.message.reply_text("👇 Use buttons below:", reply_markup=bottom_keyboard())
     else:
         txt = "⚠️ Access Denied!\nPlease join our channels to use the bot."
@@ -482,7 +487,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "main":
-        await q.edit_message_text("Menu:", reply_markup=main_menu_keyboard())
+        await q.edit_message_text("Menu:", reply_markup=main_menu_keyboard(0))
+        try:
+            context.application.create_task(animate_menu_task(context, q.message.chat_id, q.message.message_id))
+        except:
+            pass
         return
 
     if data == "wallet":
