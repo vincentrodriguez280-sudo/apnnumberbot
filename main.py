@@ -333,8 +333,8 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
-            icon = "💳" if s == "FACEBOOK" else "💬"
-            name = "Paypal 1" if s == "FACEBOOK" else "WhatsApp"
+            icon = "📘" if s == "FACEBOOK" else "💬"
+            name = "Facebook" if s == "FACEBOOK" else "WhatsApp"
             kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
@@ -342,7 +342,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     elif text == "🌍 Status":
         succ_tr = load_json(SUCCESS_FILE, {})
         today = date.today().strftime("%-m/%-d/%Y")
-        msg = "🔥 LIVE-STOCK STATUS.💥\n\n💳 Paypal 1\n"
+        msg = "🔥 LIVE-STOCK STATUS.💥\n\n📘 Facebook\n"
         if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
                 flag = FLAGS.get(c.split("_")[0], "🌍")
@@ -560,7 +560,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "live":
         succ_tr = load_json(SUCCESS_FILE, {})
         today = date.today().strftime("%-m/%-d/%Y")
-        txt = "🔥 LIVE-STOCK STATUS.💥\n\n💳 Paypal 1\n"
+        txt = "🔥 LIVE-STOCK STATUS.💥\n\n📘 Facebook\n"
         if succ_tr:
             for c, v in sorted(succ_tr.items(), key=lambda x: x[1], reverse=True)[:10]:
                 flag = FLAGS.get(c.split("_")[0], "🌍")
@@ -579,8 +579,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
-            icon = "💳" if s == "FACEBOOK" else "💬"
-            name = "Paypal 1" if s == "FACEBOOK" else "WhatsApp"
+            icon = "📘" if s == "FACEBOOK" else "💬"
+            name = "Facebook" if s == "FACEBOOK" else "WhatsApp"
             kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
@@ -611,7 +611,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service.upper() == "FACEBOOK":
             unique_countries.insert(0, "NEPAL_FB")
         countries_sorted = unique_countries
-        platform_name = "Paypal 1" if service.upper() == "FACEBOOK" else service.title()
+        platform_name = "Facebook" if service.upper() == "FACEBOOK" else service.title()
         txt = f"💳 {platform_name} - দেশ সিলেক্ট করুন:"
         kb = []
         for code in countries_sorted:
@@ -649,7 +649,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
-        platform_name = "Paypal 1" if service.upper() == "FACEBOOK" else service.title()
+        platform_name = "Facebook" if service.upper() == "FACEBOOK" else service.title()
         header = f"────────── ⋆⋅☆⋅⋆ ──────────\n{flag} {display} Fresh Number 💸\n📱 {platform_name}\n────────── ⋆⋅☆⋅⋆ ──────────\n\n💫 Wait 5s Or Check The OTP Grup 🖤"
         txt = header + "\n\n"
         kb = []
