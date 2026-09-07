@@ -251,15 +251,21 @@ def get_otp_client(target_number):
     print(f"[CLIENT OTP FAIL] {target_number} after 3 attempts")
     return None
 
+# ===== HAD PANEL - RATE LIMIT FIXED =====
+_had_cache = {"time": 0, "data": [], "lock": threading.Lock()}
+_had_last_request = {"time": 0}
+
 def get_otp_had(target_number):
     """
-    New HAD panel - GET http://147.135.212.197/crapi/had/viewstats?token=YOUR_API_KEY&records=1000
-    Response: {status:true, data:[{id, number, message, service, created_at}]}
+    Fixed HAD panel with rate limit handling
+    API: http://147.135.212.197/crapi/had/viewstats?token=XXX&records=1000
+    Error: "Error, you've accessed this site too many times. Try again in 3 seconds."
+    Fix: Global cache + 4 sec minimum interval + retry on rate limit
     """
+    import time
     try:
         token = PANELS["had"].get("key") or PANELS["had"].get("token")
         if not token:
-            # Try from config file
             for p in [CONFIG_FILE, "config.json", os.path.join(BASE_DIR, "config.json")]:
                 if os.path.exists(p):
                     try:
@@ -270,31 +276,84 @@ def get_otp_had(target_number):
                                 break
                     except: pass
         if not token or token == "YOUR_API_KEY":
-            print("[HAD] No API key set - set HAD_API_KEY in config.json or env")
+            print("[HAD] No API key set")
             return None
         
         url = PANELS["had"]["url"]
         params = {"token": token, "records": 1000}
         
-        # Try to fetch
-        r = requests.get(url, params=params, timeout=20)
-        try:
-            j = r.json()
-        except:
-            print(f"[HAD] Invalid JSON: {r.text[:200]}")
-            return None
+        # ===== RATE LIMIT PROTECTION - GLOBAL LOCK =====
+        with _had_cache["lock"]:
+            now = time.time()
+            # If cache is fresh (< 8 seconds), use cached data
+            if _had_cache["data"] and (now - _had_cache["time"] < 8):
+                print(f"[HAD CACHE] Using cached data ({int(now - _had_cache['time'])}s old) for {target_number}")
+                data = _had_cache["data"]
+            else:
+                # Enforce minimum 4 seconds between API calls
+                time_since_last = now - _had_last_request["time"]
+                if time_since_last < 4:
+                    sleep_time = 4 - time_since_last
+                    print(f"[HAD RATE] Waiting {sleep_time:.1f}s to avoid rate limit...")
+                    time.sleep(sleep_time)
+                
+                # Fetch with retry on rate limit
+                for attempt in range(3):
+                    try:
+                        print(f"[HAD FETCH] Attempt {attempt+1}/3 for {target_number}")
+                        r = requests.get(url, params=params, timeout=20)
+                        _had_last_request["time"] = time.time()
+                        
+                        # Check for rate limit error (plain text)
+                        if "too many times" in r.text.lower() or "try again in" in r.text.lower():
+                            print(f"[HAD RATE LIMIT] Hit rate limit, waiting 4 sec... (attempt {attempt+1})")
+                            time.sleep(4)
+                            continue
+                        
+                        try:
+                            j = r.json()
+                        except:
+                            # If not JSON but contains error text
+                            if "error" in r.text.lower() or "too many" in r.text.lower():
+                                print(f"[HAD] Rate limit text: {r.text[:200]} - waiting 4s")
+                                time.sleep(4)
+                                continue
+                            print(f"[HAD] Invalid JSON: {r.text[:200]}")
+                            return None
+                        
+                        if not j.get("status"):
+                            print(f"[HAD] API status false: {j}")
+                            # Check if it's rate limit in JSON
+                            if "too many" in str(j).lower():
+                                time.sleep(4)
+                                continue
+                            return None
+                        
+                        data = j.get("data", [])
+                        # Update cache
+                        _had_cache["data"] = data
+                        _had_cache["time"] = time.time()
+                        print(f"[HAD] Fetched {len(data)} messages, cached")
+                        break
+                        
+                    except Exception as e:
+                        print(f"[HAD FETCH ERR] Attempt {attempt+1}: {e}")
+                        time.sleep(2)
+                        continue
+                else:
+                    # All attempts failed, try using stale cache if available
+                    if _had_cache["data"]:
+                        print("[HAD] All fetch attempts failed, using stale cache")
+                        data = _had_cache["data"]
+                    else:
+                        return None
         
-        if not j.get("status"):
-            print(f"[HAD] API status false: {j}")
-            return None
-        
-        data = j.get("data", [])
+        # ===== SEARCH IN DATA (outside lock for speed) =====
         if not data:
             return None
         
         clean_target = re.sub(r'\D','', str(target_number))
         
-        # Search for matching number - newest first
         for item in data:
             num = str(item.get("number", "") or item.get("num", "") or item.get("phone", ""))
             msg = str(item.get("message", "") or item.get("msg", "") or item.get("text", ""))
@@ -303,29 +362,25 @@ def get_otp_had(target_number):
             if not clean_num:
                 continue
             
-            # Match last 8-10 digits
             if clean_target[-8:] in clean_num or clean_num[-8:] in clean_target or clean_target == clean_num or clean_target[-10:] in clean_num:
-                # Extract OTP from message - try multiple patterns
-                # Your OTP code is 492018 / 6 digit code / FB-123456 / etc
                 patterns = [
                     r'OTP code is (\d{4,8})',
                     r'code is (\d{4,8})',
                     r'FB-(\d{4,8})',
                     r'G-(\d{4,8})',
                     r'#(\d{4,8})',
-                    r'\b(\d{6})\b',  # 6 digit
-                    r'\b(\d{5})\b',  # 5 digit
-                    r'\b(\d{4})\b',  # 4 digit
-                    r'(\d{3}-\d{3})',  # 123-456
+                    r'\b(\d{6})\b',
+                    r'\b(\d{5})\b',
+                    r'\b(\d{4})\b',
+                    r'(\d{3}-\d{3})',
                 ]
                 for pat in patterns:
                     m = re.search(pat, msg, re.IGNORECASE)
                     if m:
                         code = m.group(1).replace("-", "")
-                        print(f"[HAD OTP FOUND] {target_number} => {code} from msg: {msg[:50]}")
+                        print(f"[HAD OTP FOUND] {target_number} => {code}")
                         return code
                 
-                # Fallback - any 4-8 digit number in message
                 m = re.search(r'(\d{4,8})', msg)
                 if m:
                     return m.group(1)
