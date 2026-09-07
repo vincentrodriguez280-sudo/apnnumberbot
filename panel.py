@@ -96,8 +96,45 @@ def get_range_info(code):
             return {"id": "had_file", "panel": "had", "service": "FILE"}
     return None
 
-def get_number_from_file():
-    possible_files = [NUMBERS_FILE, "numbers.txt", os.path.join(BASE_DIR, "numbers.txt"), "./numbers.txt", "/app/numbers.txt", "/app/data/numbers.txt"]
+def get_number_from_file(country_code=None):
+    """
+    Country-aware file reading
+    - MOZAMBIQUE -> numbers_mozambique.txt (258...)
+    - MYANMAR -> numbers_myanmar.txt (95...)
+    - Fallback -> numbers.txt
+    """
+    # Determine country-specific files
+    country = (country_code or "").upper()
+    specific_files = []
+    
+    if "MOZAMBIQUE" in country:
+        specific_files = [
+            os.path.join(BASE_DIR, "numbers_mozambique.txt"),
+            os.path.join(BASE_DIR, "numbers_MOZAMBIQUE.txt"),
+            "numbers_mozambique.txt",
+            "./numbers_mozambique.txt",
+            "/data/numbers_mozambique.txt",
+        ]
+    elif "MYANMAR" in country:
+        specific_files = [
+            os.path.join(BASE_DIR, "numbers_myanmar.txt"),
+            os.path.join(BASE_DIR, "numbers_MYANMAR.txt"),
+            "numbers_myanmar.txt",
+            "./numbers_myanmar.txt",
+            "/data/numbers_myanmar.txt",
+        ]
+    elif "NEPAL" in country:
+        specific_files = [
+            os.path.join(BASE_DIR, "numbers_nepal.txt"),
+            "numbers_nepal.txt",
+        ]
+    
+    # General files as fallback
+    general_files = [NUMBERS_FILE, "numbers.txt", os.path.join(BASE_DIR, "numbers.txt"), "./numbers.txt", "/app/numbers.txt", "/app/data/numbers.txt"]
+    
+    # Try specific files first, then general
+    possible_files = specific_files + general_files
+    
     with file_lock:
         file_to_use = None
         for pf in possible_files:
@@ -105,26 +142,71 @@ def get_number_from_file():
                 try:
                     if os.path.getsize(pf) > 0:
                         with open(pf,'r') as tf:
-                            content = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#")]
-                            if content:
-                                file_to_use = pf
-                                break
+                            content_lines = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#")]
+                            if content_lines:
+                                # For general file, try to filter by prefix if country specified
+                                if pf in general_files and country:
+                                    # Filter by country prefix for general file
+                                    if "MOZAMBIQUE" in country:
+                                        filtered = [l for l in content_lines if l.startswith("258") or "258" in l]
+                                        if filtered:
+                                            file_to_use = pf
+                                            break
+                                    elif "MYANMAR" in country:
+                                        filtered = [l for l in content_lines if l.startswith("95") or l.startswith("+95") or "959" in l]
+                                        if filtered:
+                                            file_to_use = pf
+                                            break
+                                    else:
+                                        file_to_use = pf
+                                        break
+                                else:
+                                    file_to_use = pf
+                                    break
                 except: continue
+        
         if not file_to_use:
+            print(f"[FILE] No file found for {country_code} - tried {possible_files[:2]}")
             return None
+        
         try:
             with open(file_to_use, 'r') as f:
                 lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
             if not lines:
                 return None
-            number = lines[0]
-            remaining = lines[1:]
+            
+            # If general file and country specified, pick matching prefix
+            selected_number = None
+            remaining = []
+            
+            if file_to_use in general_files and country:
+                if "MOZAMBIQUE" in country:
+                    for idx, line in enumerate(lines):
+                        if line.startswith("258"):
+                            selected_number = line
+                            remaining = lines[:idx] + lines[idx+1:]
+                            break
+                elif "MYANMAR" in country:
+                    for idx, line in enumerate(lines):
+                        clean = line.replace("+","")
+                        if clean.startswith("95") or clean.startswith("959"):
+                            selected_number = line
+                            remaining = lines[:idx] + lines[idx+1:]
+                            break
+            
+            # If no filtered number found, take first
+            if not selected_number:
+                selected_number = lines[0]
+                remaining = lines[1:]
+            
             with open(file_to_use, 'w') as f:
                 f.write("\n".join(remaining))
-            print(f"[NEPAL FILE] Giving {number} from {file_to_use} | {len(remaining)} left")
-            return number
+            
+            print(f"[{country} FILE] Giving {selected_number} from {file_to_use} | {len(remaining)} left")
+            return selected_number
+            
         except Exception as e:
-            print(f"[FILE ERR] {e}")
+            print(f"[FILE ERR] {e} for {country_code}")
             return None
 
 def client_login():
@@ -412,30 +494,30 @@ def create_order(service, country_code):
     is_file_based = any(fb in upper_cc for fb in file_countries)
     
     if is_file_based:
-        panel_name = "HAD" if "HAD" in upper_cc or "BD" in upper_cc or "BANGLADESH" in upper_cc or "MOZAMBIQUE" in upper_cc else "CLIENT"
-        print(f"[{panel_name} FILE MODE] {country_code} ({service}) -> numbers.txt file")
-        num = get_number_from_file()
+        panel_name = "HAD" if "HAD" in upper_cc or "BD" in upper_cc or "BANGLADESH" in upper_cc or "MOZAMBIQUE" in upper_cc or "MYANMAR" in upper_cc else "CLIENT"
+        print(f"[{panel_name} FILE MODE] {country_code} ({service}) -> file for {country_code}")
+        num = get_number_from_file(country_code)
         if num:
-            # Use had for BD/MOZAMBIQUE, client for NEPAL
-            ptype = "had" if any(x in upper_cc for x in ["BD", "BANGLADESH", "MOZAMBIQUE", "HAD"]) else "client"
+            # Use had for BD/MOZAMBIQUE/MYANMAR, client for NEPAL
+            ptype = "had" if any(x in upper_cc for x in ["BD", "BANGLADESH", "MOZAMBIQUE", "HAD", "MYANMAR"]) else "client"
             return {"number": num, "id": f"{ptype}|{num}", "source": ptype}
-        print(f"[FILE EMPTY] No numbers for {country_code}")
-        # Fallback still try file once more
-        num = get_number_from_file()
+        print(f"[FILE EMPTY] No numbers for {country_code} - checked country-specific file")
+        # Fallback
+        num = get_number_from_file(country_code)
         if num:
-            ptype = "had" if any(x in upper_cc for x in ["BD", "BANGLADESH", "MOZAMBIQUE", "HAD"]) else "client"
+            ptype = "had" if any(x in upper_cc for x in ["BD", "BANGLADESH", "MOZAMBIQUE", "HAD", "MYANMAR"]) else "client"
             return {"number": num, "id": f"{ptype}|{num}", "source": ptype}
 
     info = get_range_info(country_code)
     if not info: return None
     if info["panel"] == "client":
-        num = get_number_from_file()
+        num = get_number_from_file(country_code)
         if num:
             return {"number": num, "id": f"client|{num}", "source": "client"}
         return None
     if info["panel"] == "had":
         # HAD panel uses file for number, API for OTP
-        num = get_number_from_file()
+        num = get_number_from_file(country_code)
         if num:
             return {"number": num, "id": f"had|{num}", "source": "had"}
         # If no file, return None to show out of stock
