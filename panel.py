@@ -67,13 +67,10 @@ def get_all_countries(service="facebook"):
     if key == "FACEBOOK":
         base = [b for b in base if "NEPAL" not in b.upper()]
         base.insert(0, "NEPAL_FB")
-    # For TikTok - add Mozambique and other file-based countries if not in ranges
+    # For TikTok - ONLY Mozambique and Myanmar as requested
     if key == "TIKTOK":
-        # Add Mozambique as file-based if not already
-        file_countries = ["MOZAMBIQUE", "MOZAMBIQUE_TT", "NEPAL_TT", "BD_TT", "BANGLADESH_TT"]
-        for fc in file_countries:
-            if fc not in base:
-                base.append(fc)
+        # Only 2 countries: Mozambique and Myanmar - both file-based HAD panel
+        return ["MOZAMBIQUE", "MYANMAR"]
     return base
 
 def get_display_name(code):
@@ -92,7 +89,7 @@ def get_range_info(code):
                 return {"id": val, "panel": "had", "service": srv}
             return {"id": val, "panel": "voltx", "service": srv}
     # File-based countries - all go to HAD panel with file numbers
-    file_based = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD"]
+    file_based = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD", "MYANMAR"]
     upper_code = code.upper()
     for fb in file_based:
         if fb in upper_code:
@@ -410,7 +407,7 @@ def get_otp_voltx(number):
 
 def create_order(service, country_code):
     # All file-based countries - Nepal, Mozambique, BD etc -> HAD panel with file numbers
-    file_countries = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD"]
+    file_countries = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD", "MYANMAR"]
     upper_cc = country_code.upper()
     is_file_based = any(fb in upper_cc for fb in file_countries)
     
