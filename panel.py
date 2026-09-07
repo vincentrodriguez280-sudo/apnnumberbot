@@ -202,7 +202,11 @@ def get_number_from_file(country_code=None):
             with open(file_to_use, 'w') as f:
                 f.write("\n".join(remaining))
             
-            print(f"[{country} FILE] Giving {selected_number} from {file_to_use} | {len(remaining)} left")
+            print(f"[{country} FILE] Giving {selected_number} from {file_to_use} | {len(remaining)} left | Requested: {country_code}")
+            if "MOZAMBIQUE" in country and not selected_number.startswith("258"):
+                print(f"[WARNING] Mozambique requested but number {selected_number} doesn't start with 258!")
+            if "MYANMAR" in country and not selected_number.startswith("95"):
+                print(f"[WARNING] Myanmar requested but number {selected_number} doesn't start with 95!")
             return selected_number
             
         except Exception as e:
