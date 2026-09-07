@@ -518,6 +518,70 @@ async def debug_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
     await update.message.reply_text(msg[:4000])
 
+async def refresh_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Refresh /data files from Github - fixes Mozambique issue"""
+    if update.effective_user.id != ADMIN_ID:
+        return
+    msg = "🔄 Refreshing number files from Github...\n\n"
+    try:
+        files_to_refresh = ["numbers_mozambique.txt", "numbers_myanmar.txt", "numbers.txt"]
+        for fname in files_to_refresh:
+            src_candidates = [f"./{fname}", f"{fname}", f"/app/{fname}"]
+            dst = os.path.join(BASE_DIR, fname)
+            src_found = None
+            for src in src_candidates:
+                if os.path.exists(src):
+                    src_found = src
+                    break
+            if not src_found:
+                msg += f"❌ {fname}: Github file not found\n"
+                continue
+            
+            try:
+                with open(src_found,'r') as sf:
+                    src_content = sf.read()
+                    src_numbers = [l.strip() for l in src_content.split('\n') if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                
+                if len(src_numbers) == 0:
+                    msg += f"⚠️ {fname}: Github file empty (0 numbers)\n"
+                    continue
+                
+                # Backup old /data file
+                if os.path.exists(dst):
+                    backup = dst + ".backup"
+                    try:
+                        shutil.copy(dst, backup)
+                        msg += f"📦 Backed up {fname} ({os.path.getsize(dst)} bytes)\n"
+                    except: pass
+                
+                # Copy new file from Github to /data
+                shutil.copy(src_found, dst)
+                msg += f"✅ {fname}: {len(src_numbers)} numbers copied from {src_found} -> {dst}\n"
+                msg += f"   First: {src_numbers[0]}\n"
+                
+            except Exception as e:
+                msg += f"❌ {fname}: Error {e}\n"
+        
+        msg += "\n✅ Refresh done! Now test Mozambique again."
+    except Exception as e:
+        msg += f"\n❌ Error: {e}"
+    
+    await update.message.reply_text(msg[:4000])
+
+async def clear_mozambique(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Clear Mozambique /data file to force use Github file"""
+    if update.effective_user.id != ADMIN_ID:
+        return
+    try:
+        dst = os.path.join(BASE_DIR, "numbers_mozambique.txt")
+        if os.path.exists(dst):
+            os.remove(dst)
+            await update.message.reply_text(f"✅ Deleted {dst}\nNow /data file gone, bot will use ./numbers_mozambique.txt (10 numbers from Github)\nRun /debug to verify")
+        else:
+            await update.message.reply_text(f"⚠️ {dst} not found")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     args = context.args
@@ -975,6 +1039,9 @@ app.add_error_handler(error_handler)
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("debug", debug_numbers))
 app.add_handler(CommandHandler("mynumbers", debug_numbers))
+app.add_handler(CommandHandler("refresh", refresh_numbers))
+app.add_handler(CommandHandler("clearmoz", clear_mozambique))
+app.add_handler(CommandHandler("clear_mozambique", clear_mozambique))
 app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
 app.add_handler(CommandHandler("del", del_range))
