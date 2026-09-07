@@ -46,6 +46,45 @@ if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
         shutil.copy("ranges.json", RANGES_FILE)
     except: pass
 
+# ===== AUTO SYNC number files from Github to /data volume =====
+# Railway te /data volume thakle Github er file /data te copy hobe na
+# Tai auto copy system
+def sync_number_files():
+    try:
+        files_to_sync = ["numbers.txt", "numbers_mozambique.txt", "numbers_myanmar.txt", "numbers_nepal.txt"]
+        for fname in files_to_sync:
+            src_candidates = [f"./{fname}", f"{fname}", os.path.join(".", fname)]
+            dst = os.path.join(BASE_DIR, fname)
+            # If BASE_DIR is /data and dst doesn't exist or empty, copy from src
+            if BASE_DIR in ["/data", "/app/data"]:
+                if not os.path.exists(dst) or os.path.getsize(dst) < 10:
+                    for src in src_candidates:
+                        if os.path.exists(src) and os.path.getsize(src) > 10:
+                            try:
+                                shutil.copy(src, dst)
+                                print(f"[SYNC] Copied {src} -> {dst}")
+                                break
+                            except: pass
+                # Also check if dst is empty (only comments) but src has numbers
+                try:
+                    if os.path.exists(dst):
+                        with open(dst,'r') as f:
+                            dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and l.strip()[0].isdigit()]
+                        if len(dst_numbers) == 0:
+                            for src in src_candidates:
+                                if os.path.exists(src):
+                                    with open(src,'r') as sf:
+                                        src_numbers = [l.strip() for l in sf.readlines() if l.strip() and not l.strip().startswith("#") and l.strip()[0].isdigit()]
+                                    if len(src_numbers) > 0:
+                                        shutil.copy(src, dst)
+                                        print(f"[SYNC] Overwrote empty {dst} with {src} ({len(src_numbers)} numbers)")
+                                        break
+                except: pass
+    except Exception as e:
+        print(f"[SYNC ERR] {e}")
+
+sync_number_files()
+
 ADMIN_ID = 1853202569
 FLAGS = {
     "NEPAL": "🇳🇵", "NEPAL_FB": "🇳🇵",
