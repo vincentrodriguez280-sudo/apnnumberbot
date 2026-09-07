@@ -4,7 +4,7 @@
   "LOGIN_URL": "http://139.99.68.231/ints/client/login",
   "PANEL_USER": "Polaszone",
   "PANEL_PASS": "Polaszone",
-  "PANEL_KEY": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
+  "PANEL_KEY": "QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA==",
   "OTP_GROUP_ID": "@APNOTP",
   "VOLTX_ENABLED": true,
   "CLIENT_ENABLED": true,
@@ -15,7 +15,7 @@
     "NEPAL"
   ],
   "VOLTX_NUMBERS_PER_ORDER": 6,
-  "HAD_API_KEY": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
+  "HAD_API_KEY": "QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA==",
   "HAD_PANEL_URL": "http://147.135.212.197/crapi/had/viewstats",
   "HAD_ENABLED": true,
   "HAD_COUNTRIES": [
