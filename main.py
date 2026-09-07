@@ -52,16 +52,16 @@ FLAGS = {
     "CAMEROON": "🇨🇲", "GUINEA": "🇬🇳", "GUNIEA": "🇬🇳",
     "MADAGASCAR": "🇲🇬", "MONTENEGRO": "🇲🇪", "UKRAINE": "🇺🇦",
     "HAITI": "🇭🇹", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "USA_FB": "🇺🇸",
-    "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "MOZAMBIQUE": "🇲🇿", "ISRAEL": "🇮🇱",
+    "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "MOZAMBIQUE": "🇲🇿", "MYANMAR": "🇲🇲", "MYANMAR_TT": "🇲🇲", "MOZAMBIQUE_TT": "🇲🇿", "ISRAEL": "🇮🇱",
     "BD": "🇧🇩", "BANGLADESH": "🇧🇩", "BANGLADESH_FB": "🇧🇩", "BD_FB": "🇧🇩", "HAD": "🇧🇩",
 }
 PRICES = {
     "NEPAL": "0.005$", "NEPAL_FB": "0.005$",
-    "MOROCCO": "0.003$", "NIGERIA": "0.003$", "MOZAMBIQUE": "0.003$",
+    "MOROCCO": "0.003$", "NIGERIA": "0.003$", "MOZAMBIQUE": "0.005$", "MYANMAR": "0.005$", "MYANMAR_TT": "0.005$", "MOZAMBIQUE_TT": "0.005$",
     "CAMEROON": "0.003$", "GUINEA": "0.003$", "MADAGASCAR": "0.003$",
     "MONTENEGRO": "0.003$", "UKRAINE": "0.003$", "HAITI": "0.003$",
     "SIERRA_LEONE": "0.003$", "USA": "0.003$", "USA_FB": "0.003$",
-    "BD": "0.005$", "BANGLADESH": "0.005$", "BANGLADESH_FB": "0.005$", "BD_FB": "0.005$", "HAD": "0.005$",
+    "BD": "0.005$", "BANGLADESH": "0.005$", "BANGLADESH_FB": "0.005$", "BD_FB": "0.005$", "HAD": "0.005$", "MYANMAR_FB": "0.005$",
     "DEFAULT": "0.003$",
 }
 
