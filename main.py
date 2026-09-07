@@ -205,9 +205,14 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
-    print(f"[WATCHER START] {number} {order_id}")
-    for i in range(180):
-        await asyncio.sleep(5)
+    print(f"[WATCHER START] {number} {order_id} {country_code}")
+    # HAD panel needs slower checking due to rate limit - 8 sec interval
+    is_had = "had" in order_id.lower() or "MOZAMBIQUE" in country_code.upper() or "BD" in country_code.upper() or "BANGLADESH" in country_code.upper()
+    interval = 8 if is_had else 5
+    max_checks = 112 if is_had else 180  # 15 min total for both (112*8=896s, 180*5=900s)
+    print(f"[WATCHER] {number} interval={interval}s max={max_checks} (is_had={is_had})")
+    for i in range(max_checks):
+        await asyncio.sleep(interval)
         try:
             otp = await asyncio.to_thread(get_otp, order_id)
             if otp:
