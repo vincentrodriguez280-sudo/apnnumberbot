@@ -4,7 +4,7 @@
   "LOGIN_URL": "http://139.99.68.231/ints/client/login",
   "PANEL_USER": "Polaszone",
   "PANEL_PASS": "Polaszone",
-  "PANEL_KEY": "",
+  "PANEL_KEY": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
   "OTP_GROUP_ID": "@APNOTP",
   "VOLTX_ENABLED": true,
   "CLIENT_ENABLED": true,
@@ -12,7 +12,26 @@
   "NUMBERS_PER_ORDER": 3,
   "CLIENT_COUNTRIES": [
     "NEPAL_FB",
-    "NEPAL"
+    "NEPAL",
+    "NEPAL_TT",
+    "MOZAMBIQUE",
+    "MOZAMBIQUE_TT"
   ],
-  "VOLTX_NUMBERS_PER_ORDER": 6
+  "VOLTX_NUMBERS_PER_ORDER": 6,
+  "HAD_API_KEY": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
+  "HAD_PANEL_URL": "http://147.135.212.197/crapi/had/viewstats",
+  "HAD_ENABLED": true,
+  "HAD_COUNTRIES": [
+    "BD",
+    "BANGLADESH",
+    "BANGLADESH_FB",
+    "BD_FB",
+    "HAD",
+    "MOZAMBIQUE",
+    "MOZAMBIQUE_TT",
+    "MOZAMBIQUE_FB",
+    "NEPAL_TT",
+    "BD_TT"
+  ],
+  "TIKTOK_ENABLED": true
 }
