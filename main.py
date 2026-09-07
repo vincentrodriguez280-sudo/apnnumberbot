@@ -871,7 +871,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         display = get_display_name(country_code)
         flag = FLAGS.get(country_code.upper(), FLAGS.get(country_code.upper().split("_")[0], "🌍"))
         is_nepal = "NEPAL" in country_code.upper()
-        num_count = 3 if is_nepal else 6
+        is_tiktok_file = any(x in country_code.upper() for x in ["MOZAMBIQUE", "MYANMAR"])
+        # TikTok file-based: only 1 number per click to avoid duplicate
+        if is_tiktok_file:
+            num_count = 1
+        else:
+            num_count = 3 if is_nepal else 6
         await q.edit_message_text(f"⏳ Fetching {num_count} numbers for {display}...")
         nums = []
         for i in range(num_count):
