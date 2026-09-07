@@ -29,6 +29,11 @@ PANELS = {
         "login_url": CFG.get("LOGIN_URL", "http://139.99.68.231/ints/client/login"),
         "user": CFG.get("PANEL_USER", "Polaszone"),
         "pass": CFG.get("PANEL_PASS", "Polaszone"),
+    },
+    "had": {
+        "url": "http://147.135.212.197/crapi/had/viewstats",
+        "key": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
+        "token": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
     }
 }
 
@@ -37,26 +42,38 @@ _logged_in = False
 file_lock = threading.Lock()
 
 def load_ranges():
-    data = {"FACEBOOK": {}, "WHATSAPP": {}}
+    data = {"FACEBOOK": {}, "WHATSAPP": {}, "TIKTOK": {}}
     for path in [RANGES_FILE, "ranges.json"]:
         if os.path.exists(path):
             try:
                 with open(path, 'r') as f:
                     raw = json.load(f)
-                    for srv in ["FACEBOOK", "WHATSAPP"]:
+                    for srv in ["FACEBOOK", "WHATSAPP", "TIKTOK"]:
                         for k, v in raw.get(srv, {}).items():
                             data[srv][k.upper()] = v
             except: pass
     return data
 
 def get_all_countries(service="facebook"):
-    key = "WHATSAPP" if service.lower() in ["whatsapp","ws"] else "FACEBOOK"
+    svc = service.lower()
+    if svc in ["whatsapp","ws"]:
+        key = "WHATSAPP"
+    elif svc in ["tiktok","tt","tik_tok"]:
+        key = "TIKTOK"
+    else:
+        key = "FACEBOOK"
     base = list(load_ranges().get(key, {}).keys())
     # Always add Nepal for FB from file - only once
     if key == "FACEBOOK":
-        # Remove any existing Nepal variants to avoid duplicate
         base = [b for b in base if "NEPAL" not in b.upper()]
         base.insert(0, "NEPAL_FB")
+    # For TikTok - add Mozambique and other file-based countries if not in ranges
+    if key == "TIKTOK":
+        # Add Mozambique as file-based if not already
+        file_countries = ["MOZAMBIQUE", "MOZAMBIQUE_TT", "NEPAL_TT", "BD_TT", "BANGLADESH_TT"]
+        for fc in file_countries:
+            if fc not in base:
+                base.append(fc)
     return base
 
 def get_display_name(code):
@@ -66,12 +83,20 @@ def get_display_name(code):
 
 def get_range_info(code):
     data = load_ranges()
-    for srv in ["FACEBOOK", "WHATSAPP"]:
+    for srv in ["FACEBOOK", "WHATSAPP", "TIKTOK"]:
         if code.upper() in data.get(srv, {}):
-            return {"id": data[srv][code.upper()], "panel": "voltx", "service": srv}
-    # Nepal file-based
-    if "NEPAL" in code.upper():
-        return {"id": "file", "panel": "client", "service": "FILE"}
+            val = data[srv][code.upper()]
+            if isinstance(val, str) and val.lower().startswith("had_"):
+                return {"id": val, "panel": "had", "service": srv}
+            if "HAD" in code.upper() or "BD" in code.upper() or "BANGLADESH" in code.upper() or "MOZAMBIQUE" in code.upper() or "NEPAL" in code.upper():
+                return {"id": val, "panel": "had", "service": srv}
+            return {"id": val, "panel": "voltx", "service": srv}
+    # File-based countries - all go to HAD panel with file numbers
+    file_based = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD"]
+    upper_code = code.upper()
+    for fb in file_based:
+        if fb in upper_code:
+            return {"id": "had_file", "panel": "had", "service": "FILE"}
     return None
 
 def get_number_from_file():
@@ -226,6 +251,90 @@ def get_otp_client(target_number):
     print(f"[CLIENT OTP FAIL] {target_number} after 3 attempts")
     return None
 
+def get_otp_had(target_number):
+    """
+    New HAD panel - GET http://147.135.212.197/crapi/had/viewstats?token=YOUR_API_KEY&records=1000
+    Response: {status:true, data:[{id, number, message, service, created_at}]}
+    """
+    try:
+        token = PANELS["had"].get("key") or PANELS["had"].get("token")
+        if not token:
+            # Try from config file
+            for p in [CONFIG_FILE, "config.json", os.path.join(BASE_DIR, "config.json")]:
+                if os.path.exists(p):
+                    try:
+                        with open(p,'r') as f:
+                            cfg = json.load(f)
+                            if cfg.get("HAD_API_KEY"):
+                                token = cfg["HAD_API_KEY"]
+                                break
+                    except: pass
+        if not token or token == "YOUR_API_KEY":
+            print("[HAD] No API key set - set HAD_API_KEY in config.json or env")
+            return None
+        
+        url = PANELS["had"]["url"]
+        params = {"token": token, "records": 1000}
+        
+        # Try to fetch
+        r = requests.get(url, params=params, timeout=20)
+        try:
+            j = r.json()
+        except:
+            print(f"[HAD] Invalid JSON: {r.text[:200]}")
+            return None
+        
+        if not j.get("status"):
+            print(f"[HAD] API status false: {j}")
+            return None
+        
+        data = j.get("data", [])
+        if not data:
+            return None
+        
+        clean_target = re.sub(r'\D','', str(target_number))
+        
+        # Search for matching number - newest first
+        for item in data:
+            num = str(item.get("number", "") or item.get("num", "") or item.get("phone", ""))
+            msg = str(item.get("message", "") or item.get("msg", "") or item.get("text", ""))
+            
+            clean_num = re.sub(r'\D','', num)
+            if not clean_num:
+                continue
+            
+            # Match last 8-10 digits
+            if clean_target[-8:] in clean_num or clean_num[-8:] in clean_target or clean_target == clean_num or clean_target[-10:] in clean_num:
+                # Extract OTP from message - try multiple patterns
+                # Your OTP code is 492018 / 6 digit code / FB-123456 / etc
+                patterns = [
+                    r'OTP code is (\d{4,8})',
+                    r'code is (\d{4,8})',
+                    r'FB-(\d{4,8})',
+                    r'G-(\d{4,8})',
+                    r'#(\d{4,8})',
+                    r'\b(\d{6})\b',  # 6 digit
+                    r'\b(\d{5})\b',  # 5 digit
+                    r'\b(\d{4})\b',  # 4 digit
+                    r'(\d{3}-\d{3})',  # 123-456
+                ]
+                for pat in patterns:
+                    m = re.search(pat, msg, re.IGNORECASE)
+                    if m:
+                        code = m.group(1).replace("-", "")
+                        print(f"[HAD OTP FOUND] {target_number} => {code} from msg: {msg[:50]}")
+                        return code
+                
+                # Fallback - any 4-8 digit number in message
+                m = re.search(r'(\d{4,8})', msg)
+                if m:
+                    return m.group(1)
+        
+        return None
+    except Exception as e:
+        print(f"[HAD OTP ERR] {e}")
+        return None
+
 def get_otp_voltx(number):
     try:
         num_digits = re.sub(r'\D', '', number)
@@ -245,13 +354,25 @@ def get_otp_voltx(number):
     except: return None
 
 def create_order(service, country_code):
-    # Nepal = file system
-    if "NEPAL" in country_code.upper():
-        print(f"[NEPAL MODE] {country_code} -> txt file")
+    # All file-based countries - Nepal, Mozambique, BD etc -> HAD panel with file numbers
+    file_countries = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD"]
+    upper_cc = country_code.upper()
+    is_file_based = any(fb in upper_cc for fb in file_countries)
+    
+    if is_file_based:
+        panel_name = "HAD" if "HAD" in upper_cc or "BD" in upper_cc or "BANGLADESH" in upper_cc or "MOZAMBIQUE" in upper_cc else "CLIENT"
+        print(f"[{panel_name} FILE MODE] {country_code} ({service}) -> numbers.txt file")
         num = get_number_from_file()
         if num:
-            return {"number": num, "id": f"client|{num}", "source": "client"}
-        print("[NEPAL EMPTY] fallback to voltx if has range")
+            # Use had for BD/MOZAMBIQUE, client for NEPAL
+            ptype = "had" if any(x in upper_cc for x in ["BD", "BANGLADESH", "MOZAMBIQUE", "HAD"]) else "client"
+            return {"number": num, "id": f"{ptype}|{num}", "source": ptype}
+        print(f"[FILE EMPTY] No numbers for {country_code}")
+        # Fallback still try file once more
+        num = get_number_from_file()
+        if num:
+            ptype = "had" if any(x in upper_cc for x in ["BD", "BANGLADESH", "MOZAMBIQUE", "HAD"]) else "client"
+            return {"number": num, "id": f"{ptype}|{num}", "source": ptype}
 
     info = get_range_info(country_code)
     if not info: return None
@@ -259,6 +380,14 @@ def create_order(service, country_code):
         num = get_number_from_file()
         if num:
             return {"number": num, "id": f"client|{num}", "source": "client"}
+        return None
+    if info["panel"] == "had":
+        # HAD panel uses file for number, API for OTP
+        num = get_number_from_file()
+        if num:
+            return {"number": num, "id": f"had|{num}", "source": "had"}
+        # If no file, return None to show out of stock
+        print(f"[HAD] No numbers in file for {country_code}")
         return None
     # Voltx for others
     panel = PANELS["voltx"]
@@ -275,6 +404,10 @@ def get_otp(order_id):
         ptype, number = order_id.split("|", 1) if "|" in order_id else ("voltx", order_id)
         if ptype == "client":
             return get_otp_client(number)
+        elif ptype == "had":
+            return get_otp_had(number)
         else:
             return get_otp_voltx(number)
-    except: return None
+    except Exception as e:
+        print(f"[GET OTP ERR] {e}")
+        return None
