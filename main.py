@@ -14,7 +14,7 @@ CH3 = "https://t.me/Proxystore999"
 OTP_GROUP = "https://t.me/APNOTP"
 OTP_GROUP_ID = "@APNOTP"
 SUPPORT_ID = "https://t.me/PolasChandra"
-SERVICES = ["FACEBOOK", "WHATSAPP"]
+SERVICES = ["FACEBOOK", "WHATSAPP", "TIKTOK"]
 COMMUNITY_URL = "https://t.me/APNOfficial"
 NUMBER_BOT_URL = "https://t.me/APNNUMBERBOT"
 
@@ -53,6 +53,7 @@ FLAGS = {
     "MADAGASCAR": "🇲🇬", "MONTENEGRO": "🇲🇪", "UKRAINE": "🇺🇦",
     "HAITI": "🇭🇹", "SIERRA_LEONE": "🇸🇱", "USA": "🇺🇸", "USA_FB": "🇺🇸",
     "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "MOZAMBIQUE": "🇲🇿", "ISRAEL": "🇮🇱",
+    "BD": "🇧🇩", "BANGLADESH": "🇧🇩", "BANGLADESH_FB": "🇧🇩", "BD_FB": "🇧🇩", "HAD": "🇧🇩",
 }
 PRICES = {
     "NEPAL": "0.005$", "NEPAL_FB": "0.005$",
@@ -60,6 +61,7 @@ PRICES = {
     "CAMEROON": "0.003$", "GUINEA": "0.003$", "MADAGASCAR": "0.003$",
     "MONTENEGRO": "0.003$", "UKRAINE": "0.003$", "HAITI": "0.003$",
     "SIERRA_LEONE": "0.003$", "USA": "0.003$", "USA_FB": "0.003$",
+    "BD": "0.005$", "BANGLADESH": "0.005$", "BANGLADESH_FB": "0.005$", "BD_FB": "0.005$", "HAD": "0.005$",
     "DEFAULT": "0.003$",
 }
 
@@ -149,7 +151,12 @@ def format_for_inbox(country_code, full_number, service, otp_code):
     flag = FLAGS.get(clean, FLAGS.get(clean.split("_")[0], "🌍"))
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
     # Service name fix - TikTok na, asol service er nam
-    service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB", "NEPAL", "NEPAL_FB"] else service.title()
+    if service.upper() in ["FACEBOOK", "FB", "NEPAL", "NEPAL_FB"]:
+        service_display = "Facebook"
+    elif service.upper() in ["TIKTOK", "TT", "MOZAMBIQUE", "MOZAMBIQUE_TT"]:
+        service_display = "TikTok"
+    else:
+        service_display = service.title()
     if "NEPAL" in clean.upper():
         earn_text = "+$0.005"
     else:
@@ -168,7 +175,12 @@ def format_for_group(country_code, full_number, service, otp_code):
     masked = mask_number(full_number)
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
     # Service name fix - TikTok na, jetar number niso otar lekha thakbe
-    service_display = "Facebook" if service.upper() in ["FACEBOOK", "FB", "NEPAL", "NEPAL_FB"] else service.title()
+    if service.upper() in ["FACEBOOK", "FB", "NEPAL", "NEPAL_FB"]:
+        service_display = "Facebook"
+    elif service.upper() in ["TIKTOK", "TT", "MOZAMBIQUE", "MOZAMBIQUE_TT"]:
+        service_display = "TikTok"
+    else:
+        service_display = service.title()
     # OTP sudu button e, text e box e OTP thakbe na
     text = f"APN NUMBER BOT\n💳 #{clean} 📱 {service_display}\n\n╭─────────────────╮\n  {masked}\n╰─────────────────╯\n\n🗣 Language: #English"
     try:
@@ -459,7 +471,6 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     text = update.message.text.strip()
     print(f"[BOTTOM] {uid} pressed: {text}")
     
-    # Wallet address input - if awaiting wallet, but if user pressed menu button, cancel it
     method = context.user_data.get("awaiting_wallet_for")
     if method:
         if any(k in text for k in ["Get Number", "Status", "Active Number", "Support", "Refer", "Wallet"]):
@@ -482,13 +493,19 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("Menu:", reply_markup=main_menu_keyboard())
             return
 
-    # ====== BOTTOM KEYBOARD - 6 BUTTONS - FIXED WITH 'in' CHECK ======
     if "Get Number" in text:
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
-            icon = "📘" if s == "FACEBOOK" else "💬"
-            name = "Facebook" if s == "FACEBOOK" else "WhatsApp"
+            if s == "FACEBOOK":
+                icon = "📘"
+                name = "Facebook"
+            elif s == "TIKTOK":
+                icon = "🎵"
+                name = "TikTok"
+            else:
+                icon = "💬"
+                name = "WhatsApp"
             kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
@@ -503,7 +520,7 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                 price = PRICES.get(c.upper(), PRICES.get(c.split("_")[0], "0.003$"))
                 msg += f"├─ {flag} {c.replace('_FB','').title()} — {price}\n"
         else:
-            msg += "├─ 🇳🇵 Nepal — $0.005$\n├─ 🇲🇦 Morocco — $0.003$\n├─ 🇳🇬 Nigeria — $0.003$\n"
+            msg += "├─ 🇳🇵 Nepal — $0.005$\n├─ 🇲🇿 Mozambique — $0.003$\n├─ 🇧🇩 BD — $0.005$\n"
         msg += "────────────────────\n"
         msg += f"📅 Date: {today}\n"
         msg += "────────────────────"
@@ -751,8 +768,15 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
         kb = []
         for s in SERVICES:
-            icon = "📘" if s == "FACEBOOK" else "💬"
-            name = "Facebook" if s == "FACEBOOK" else "WhatsApp"
+            if s == "FACEBOOK":
+                icon = "📘"
+                name = "Facebook"
+            elif s == "TIKTOK":
+                icon = "🎵"
+                name = "TikTok"
+            else:
+                icon = "💬"
+                name = "WhatsApp"
             kb.append([InlineKeyboardButton(f"{icon} {name}", callback_data=f"s_{s}")])
         kb.append([InlineKeyboardButton("⬅️ Back", callback_data="main")])
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
