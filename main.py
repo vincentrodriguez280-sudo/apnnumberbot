@@ -491,6 +491,33 @@ def bottom_keyboard():
         is_persistent=True
     )
 
+async def debug_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug command to check number files"""
+    if update.effective_user.id != ADMIN_ID:
+        return
+    import glob
+    msg = "📁 Number Files Debug:\n\n"
+    for base in ["/data", "/app/data", ".", "/mnt/data"]:
+        if os.path.exists(base):
+            try:
+                files = [f for f in os.listdir(base) if 'number' in f.lower() and f.endswith('.txt')]
+                for nf in files:
+                    fp = os.path.join(base, nf)
+                    try:
+                        with open(fp,'r') as f:
+                            raw = f.read()
+                            lines = [l.strip() for l in raw.split('\n') if l.strip()]
+                            real = [l for l in lines if not l.startswith("#") and any(c.isdigit() for c in l)]
+                            msg += f"{fp}: {len(real)} numbers\n"
+                            if real:
+                                msg += f"  First: {real[0]}\n"
+                            else:
+                                msg += f"  Content: {raw[:100]}\n"
+                    except Exception as e:
+                        msg += f"{fp}: error {e}\n"
+            except: pass
+    await update.message.reply_text(msg[:4000])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     args = context.args
@@ -946,6 +973,8 @@ async def error_handler(update, context):
 
 app.add_error_handler(error_handler)
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("debug", debug_numbers))
+app.add_handler(CommandHandler("mynumbers", debug_numbers))
 app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
 app.add_handler(CommandHandler("del", del_range))
