@@ -32,8 +32,8 @@ PANELS = {
     },
     "had": {
         "url": "http://147.135.212.197/crapi/had/viewstats",
-        "key": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
-        "token": "QlBYSkVBUzRdVmdkV293WGCCVFZgg4CJh0-HYoVthGuHaIWJdJOSQQ==",
+        "key": "QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA==",
+        "token": "QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA==",
     }
 }
 
@@ -330,136 +330,158 @@ def get_otp_client(target_number):
     print(f"[CLIENT OTP FAIL] {target_number} after 3 attempts")
     return None
 
-# ===== HAD PANEL - RATE LIMIT FIXED =====
+# ===== YOUR HADI SMS PANEL - API DOC BASED =====
+# API URL: http://147.135.212.197/crapi/had/viewstats
+# Your Token: QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA==
+# Supports: token, filternum, filtercli, dt1, dt2, records (max 200)
+# Output: {"status":"success","total":25,"data":[{"dt","num","cli","message","payout"}]}
+# Output error: {"status":"error","msg":"Not Authorized"}
 _had_cache = {"time": 0, "data": [], "lock": threading.Lock()}
 _had_last_request = {"time": 0}
 
 def get_otp_had(target_number):
     """
-    Fixed HAD panel with rate limit handling
-    API: http://147.135.212.197/crapi/had/viewstats?token=XXX&records=1000
-    Error: "Error, you've accessed this site too many times. Try again in 3 seconds."
-    Fix: Global cache + 4 sec minimum interval + retry on rate limit
+    YOUR HADI PANEL - Uses filternum for specific number search
+    API Guide: http://147.135.212.197/crapi/had/viewstats?token=YOUR_TOKEN&filternum=NUMBER&records=10
     """
     import time
     try:
-        token = PANELS["had"].get("key") or PANELS["had"].get("token")
+        token = PANELS["had"].get("key") or PANELS["had"].get("token") or "QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA=="
         if not token:
             for p in [CONFIG_FILE, "config.json", os.path.join(BASE_DIR, "config.json")]:
                 if os.path.exists(p):
                     try:
                         with open(p,'r') as f:
-                            cfg = json.load(f)
-                            if cfg.get("HAD_API_KEY"):
-                                token = cfg["HAD_API_KEY"]
+                            c = json.load(f)
+                            if c.get("HAD_API_KEY"):
+                                token = c["HAD_API_KEY"]
                                 break
                     except: pass
-        if not token or token == "YOUR_API_KEY":
-            print("[HAD] No API key set")
-            return None
         
         url = PANELS["had"]["url"]
-        params = {"token": token, "records": 1000}
+        clean_target = re.sub(r'\D','', str(target_number))
         
-        # ===== RATE LIMIT PROTECTION - GLOBAL LOCK =====
+        # Use filternum to search specific number - MUCH BETTER for rate limit!
+        # Doc: filternum string (Optional) 44123456678 - search specific number
+        params_specific = {
+            "token": token,
+            "filternum": clean_target,
+            "records": 20
+        }
+        
+        params_fallback = {
+            "token": token,
+            "records": 50
+        }
+        
         with _had_cache["lock"]:
             now = time.time()
-            # If cache is fresh (< 8 seconds), use cached data
-            if _had_cache["data"] and (now - _had_cache["time"] < 8):
-                print(f"[HAD CACHE] Using cached data ({int(now - _had_cache['time'])}s old) for {target_number}")
-                data = _had_cache["data"]
-            else:
-                # Enforce minimum 4 seconds between API calls
-                time_since_last = now - _had_last_request["time"]
-                if time_since_last < 4:
-                    sleep_time = 4 - time_since_last
-                    print(f"[HAD RATE] Waiting {sleep_time:.1f}s to avoid rate limit...")
-                    time.sleep(sleep_time)
-                
-                # Fetch with retry on rate limit
-                for attempt in range(3):
+            # Rate limit: 3 sec minimum between calls
+            time_since_last = now - _had_last_request["time"]
+            if time_since_last < 3:
+                sleep_time = 3 - time_since_last
+                print(f"[HAD RATE] Waiting {sleep_time:.1f}s to avoid rate limit...")
+                time.sleep(sleep_time)
+            
+            data = None
+            # Try with filternum first (best)
+            for attempt in range(3):
+                try:
+                    print(f"[HAD YOUR PANEL] Searching {clean_target} with filternum (attempt {attempt+1})")
+                    r = requests.get(url, params=params_specific, timeout=20)
+                    _had_last_request["time"] = time.time()
+                    
+                    # Check rate limit text
+                    if "too many times" in r.text.lower() or "try again in" in r.text.lower():
+                        print(f"[HAD RATE LIMIT] Waiting 4 sec...")
+                        time.sleep(4)
+                        continue
+                    
                     try:
-                        print(f"[HAD FETCH] Attempt {attempt+1}/3 for {target_number}")
-                        r = requests.get(url, params=params, timeout=20)
-                        _had_last_request["time"] = time.time()
-                        
-                        # Check for rate limit error (plain text)
-                        if "too many times" in r.text.lower() or "try again in" in r.text.lower():
-                            print(f"[HAD RATE LIMIT] Hit rate limit, waiting 4 sec... (attempt {attempt+1})")
+                        j = r.json()
+                    except:
+                        if "too many" in r.text.lower() or "error" in r.text.lower():
+                            print(f"[HAD] Error text: {r.text[:200]}")
                             time.sleep(4)
                             continue
-                        
-                        try:
-                            j = r.json()
-                        except:
-                            # If not JSON but contains error text
-                            if "error" in r.text.lower() or "too many" in r.text.lower():
-                                print(f"[HAD] Rate limit text: {r.text[:200]} - waiting 4s")
-                                time.sleep(4)
-                                continue
-                            print(f"[HAD] Invalid JSON: {r.text[:200]}")
-                            return None
-                        
-                        if not j.get("status"):
-                            print(f"[HAD] API status false: {j}")
-                            # Check if it's rate limit in JSON
+                        print(f"[HAD] Invalid JSON: {r.text[:200]}")
+                        # Fallback to general fetch
+                        r = requests.get(url, params=params_fallback, timeout=20)
+                        j = r.json()
+                    
+                    status = j.get("status", "")
+                    # Doc: status = "success" when data available, "error" when not
+                    if isinstance(status, str) and status.lower() != "success":
+                        if status.lower() == "error":
+                            print(f"[HAD] API error: {j}")
+                            if "not authorized" in str(j).lower():
+                                print("[HAD] Token invalid! Check API key")
+                                return None
                             if "too many" in str(j).lower():
                                 time.sleep(4)
                                 continue
-                            return None
-                        
-                        data = j.get("data", [])
-                        # Update cache
+                        # If no data for filternum, try fallback but return None if truly no data
+                        if j.get("total", 0) == 0 and attempt == 0:
+                            print(f"[HAD] No data for {clean_target} with filternum, trying general...")
+                            # Don't fail yet, try general search once
+                            r = requests.get(url, params=params_fallback, timeout=20)
+                            _had_last_request["time"] = time.time()
+                            j = r.json()
+                    
+                    data = j.get("data", [])
+                    if data:
                         _had_cache["data"] = data
                         _had_cache["time"] = time.time()
-                        print(f"[HAD] Fetched {len(data)} messages, cached")
-                        break
-                        
-                    except Exception as e:
-                        print(f"[HAD FETCH ERR] Attempt {attempt+1}: {e}")
-                        time.sleep(2)
-                        continue
+                        print(f"[HAD YOUR PANEL] Got {len(data)} records for {clean_target}")
+                    break
+                    
+                except Exception as e:
+                    print(f"[HAD FETCH ERR] {e}")
+                    time.sleep(2)
+                    continue
+            else:
+                if _had_cache["data"]:
+                    print("[HAD] Using stale cache")
+                    data = _had_cache["data"]
                 else:
-                    # All attempts failed, try using stale cache if available
-                    if _had_cache["data"]:
-                        print("[HAD] All fetch attempts failed, using stale cache")
-                        data = _had_cache["data"]
-                    else:
-                        return None
+                    return None
         
-        # ===== SEARCH IN DATA (outside lock for speed) =====
         if not data:
+            print(f"[HAD] No data for {target_number}")
             return None
         
-        clean_target = re.sub(r'\D','', str(target_number))
-        
+        # Parse data - new format: dt, num, cli, message, payout
         for item in data:
-            num = str(item.get("number", "") or item.get("num", "") or item.get("phone", ""))
-            msg = str(item.get("message", "") or item.get("msg", "") or item.get("text", ""))
+            num = str(item.get("num", "") or item.get("number", "") or "")
+            msg = str(item.get("message", "") or item.get("msg", "") or "")
             
             clean_num = re.sub(r'\D','', num)
             if not clean_num:
                 continue
             
+            # Since we used filternum, should match, but verify
             if clean_target[-8:] in clean_num or clean_num[-8:] in clean_target or clean_target == clean_num or clean_target[-10:] in clean_num:
+                # Extract OTP - doc example: "Use verification code 705516 for Via Benefits"
                 patterns = [
+                    r'verification code (\d{4,8})',
                     r'OTP code is (\d{4,8})',
                     r'code is (\d{4,8})',
+                    r'code (\d{4,8})',
                     r'FB-(\d{4,8})',
                     r'G-(\d{4,8})',
                     r'#(\d{4,8})',
                     r'\b(\d{6})\b',
                     r'\b(\d{5})\b',
                     r'\b(\d{4})\b',
-                    r'(\d{3}-\d{3})',
                 ]
                 for pat in patterns:
                     m = re.search(pat, msg, re.IGNORECASE)
                     if m:
-                        code = m.group(1).replace("-", "")
-                        print(f"[HAD OTP FOUND] {target_number} => {code}")
+                        code = m.group(1)
+                        print(f"[HAD YOUR PANEL OTP] {target_number} => {code} | {msg[:60]}")
                         return code
                 
+                # Fallback any 4-8 digit
                 m = re.search(r'(\d{4,8})', msg)
                 if m:
                     return m.group(1)
@@ -467,7 +489,10 @@ def get_otp_had(target_number):
         return None
     except Exception as e:
         print(f"[HAD OTP ERR] {e}")
+        import traceback
+        traceback.print_exc()
         return None
+
 
 def get_otp_voltx(number):
     try:
