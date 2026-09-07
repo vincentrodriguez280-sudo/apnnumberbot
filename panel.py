@@ -137,6 +137,16 @@ def get_number_from_file(country_code=None):
     
     with file_lock:
         file_to_use = None
+        # Debug: list all possible files and their number counts
+        for pf in possible_files:
+            if os.path.exists(pf):
+                try:
+                    with open(pf,'r') as tf:
+                        lines = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                        if lines:
+                            print(f"[FILE CHECK] {pf}: {len(lines)} numbers, first: {lines[0][:15]}")
+                except: pass
+        
         for pf in possible_files:
             if os.path.exists(pf):
                 try:
