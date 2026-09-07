@@ -138,21 +138,80 @@ def get_number_from_file(country_code=None):
     with file_lock:
         file_to_use = None
         # Debug: list all possible files and their number counts
+        print(f"[FILE CHECK START] Looking for {country} - {country_code}")
         for pf in possible_files:
-            if os.path.exists(pf):
+            exists = os.path.exists(pf)
+            print(f"[FILE CHECK] Checking {pf}: exists={exists}")
+            if exists:
                 try:
                     with open(pf,'r') as tf:
-                        lines = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                        raw_lines = tf.readlines()
+                        print(f"[FILE CHECK] {pf}: total lines {len(raw_lines)}")
+                        # More robust filtering - allow numbers even with spaces, +, etc
+                        lines = []
+                        for line in raw_lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            if line.startswith("#"):
+                                # Check if # line contains a number with correct prefix - user may have # by mistake
+                                # Extract digits from comment
+                                import re
+                                digits = re.sub(r'\D', '', line)
+                                if digits and len(digits) >= 8:
+                                    # If comment contains number like "# 258820000001", treat as number
+                                    if "MOZAMBIQUE" in country and digits.startswith("258"):
+                                        lines.append(digits)
+                                        print(f"[FILE CHECK] Found number in comment: {digits} from {pf}")
+                                    elif "MYANMAR" in country and digits.startswith("95"):
+                                        lines.append(digits)
+                                        print(f"[FILE CHECK] Found number in comment: {digits} from {pf}")
+                                continue
+                            # Normal line - extract digits
+                            if any(c.isdigit() for c in line):
+                                # Clean line
+                                clean = re.sub(r'[^0-9+]', '', line)
+                                if clean:
+                                    lines.append(clean)
                         if lines:
-                            print(f"[FILE CHECK] {pf}: {len(lines)} numbers, first: {lines[0][:15]}")
-                except: pass
+                            print(f"[FILE CHECK] {pf}: {len(lines)} numbers, first: {lines[0][:15]}, all: {lines[:3]}")
+                        else:
+                            print(f"[FILE CHECK] {pf}: 0 real numbers (only comments)")
+                except Exception as e:
+                    print(f"[FILE CHECK ERR] {pf}: {e}")
         
         for pf in possible_files:
             if os.path.exists(pf):
                 try:
                     if os.path.getsize(pf) > 0:
                         with open(pf,'r') as tf:
-                            content_lines = [l.strip() for l in tf.readlines() if l.strip() and not l.strip().startswith("#")]
+                            raw = tf.readlines()
+                            content_lines = []
+                            for line in raw:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                # If line starts with #, check if it contains a valid number
+                                if line.startswith("#"):
+                                    import re
+                                    digits = re.sub(r'\D', '', line)
+                                    if digits and len(digits) >= 8:
+                                        if "MOZAMBIQUE" in country and "258" in digits:
+                                            # Extract the number part
+                                            # Find 258... pattern
+                                            m = re.search(r'258\d{6,}', digits)
+                                            if m:
+                                                content_lines.append(m.group(0))
+                                                continue
+                                        if "MYANMAR" in country and "95" in digits:
+                                            m = re.search(r'95\d{6,}', digits)
+                                            if m:
+                                                content_lines.append(m.group(0))
+                                                continue
+                                    continue
+                                # Normal line
+                                if line and not line.startswith("#"):
+                                    content_lines.append(line)
                             if content_lines:
                                 # For general file, try to filter by prefix if country specified
                                 if pf in general_files and country:
