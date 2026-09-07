@@ -50,38 +50,67 @@ if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
 # Railway te /data volume thakle Github er file /data te copy hobe na
 # Tai auto copy system
 def sync_number_files():
+    """
+    Sync number files from Github to /data
+    FIXED: Don't recycle! If /data file exists, don't overwrite even if empty
+    Because empty means numbers used up - recycling causes duplicate!
+    Only copy if file doesn't exist at all
+    """
     try:
         files_to_sync = ["numbers.txt", "numbers_mozambique.txt", "numbers_myanmar.txt", "numbers_nepal.txt"]
         for fname in files_to_sync:
-            src_candidates = [f"./{fname}", f"{fname}", os.path.join(".", fname)]
+            src_candidates = [f"./{fname}", f"{fname}", os.path.join(".", fname), f"/app/{fname}"]
             dst = os.path.join(BASE_DIR, fname)
-            # If BASE_DIR is /data and dst doesn't exist or empty, copy from src
             if BASE_DIR in ["/data", "/app/data"]:
-                if not os.path.exists(dst) or os.path.getsize(dst) < 10:
+                # Only copy if destination doesn't exist at all - DON'T overwrite empty!
+                # Empty file means numbers finished - don't recycle!
+                if not os.path.exists(dst):
                     for src in src_candidates:
                         if os.path.exists(src) and os.path.getsize(src) > 10:
                             try:
-                                shutil.copy(src, dst)
-                                print(f"[SYNC] Copied {src} -> {dst}")
-                                break
-                            except: pass
-                # Also check if dst is empty (only comments) but src has numbers
-                try:
-                    if os.path.exists(dst):
-                        with open(dst,'r') as f:
-                            dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and l.strip()[0].isdigit()]
-                        if len(dst_numbers) == 0:
-                            for src in src_candidates:
-                                if os.path.exists(src):
-                                    with open(src,'r') as sf:
-                                        src_numbers = [l.strip() for l in sf.readlines() if l.strip() and not l.strip().startswith("#") and l.strip()[0].isdigit()]
-                                    if len(src_numbers) > 0:
-                                        shutil.copy(src, dst)
-                                        print(f"[SYNC] Overwrote empty {dst} with {src} ({len(src_numbers)} numbers)")
-                                        break
-                except: pass
+                                # Check src has real numbers
+                                with open(src,'r') as sf:
+                                    src_numbers = [l.strip() for l in sf.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                                if len(src_numbers) > 0:
+                                    shutil.copy(src, dst)
+                                    print(f"[SYNC] Copied {src} -> {dst} ({len(src_numbers)} numbers)")
+                                    break
+                            except Exception as e:
+                                print(f"[SYNC COPY ERR] {e}")
+                                pass
+                else:
+                    # File exists in /data - check if it has numbers or only comments
+                    # If only comments (0 numbers) and src has numbers, AND dst was never used (size small), copy
+                    # But if dst was used and became empty, DON'T copy to avoid duplicate
+                    try:
+                        if os.path.getsize(dst) < 200:  # Small file, likely empty/template
+                            with open(dst,'r') as f:
+                                dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                            if len(dst_numbers) == 0:
+                                # Check if this is first time (template) vs used up
+                                # If dst is template (contains # Example), allow copy from src with real numbers
+                                with open(dst,'r') as f:
+                                    dst_content = f.read()
+                                if "# Example" in dst_content or "ADD YOUR" in dst_content:
+                                    for src in src_candidates:
+                                        if os.path.exists(src):
+                                            with open(src,'r') as sf:
+                                                src_content = sf.read()
+                                                src_numbers = [l.strip() for l in src_content.split("\n") if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                                            # Only copy if src has REAL numbers (not just example)
+                                            # Real numbers don't have # and have correct prefix
+                                            real_src_numbers = [n for n in src_numbers if not n.startswith("#") and (n.startswith("258") or n.startswith("95") or n.startswith("977"))]
+                                            if len(real_src_numbers) > 0 and len(real_src_numbers) > len(dst_numbers):
+                                                # Check if src is not template
+                                                if src_content.count("Example") < 2:
+                                                    shutil.copy(src, dst)
+                                                    print(f"[SYNC] Initial copy {src} -> {dst} ({len(real_src_numbers)} real numbers)")
+                                                    break
+                    except: pass
     except Exception as e:
         print(f"[SYNC ERR] {e}")
+        import traceback
+        traceback.print_exc()
 
 sync_number_files()
 
@@ -872,9 +901,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         flag = FLAGS.get(country_code.upper(), FLAGS.get(country_code.upper().split("_")[0], "🌍"))
         is_nepal = "NEPAL" in country_code.upper()
         is_tiktok_file = any(x in country_code.upper() for x in ["MOZAMBIQUE", "MYANMAR"])
-        # TikTok file-based: only 1 number per click to avoid duplicate
+        # User wants 5 numbers per click for TikTok
         if is_tiktok_file:
-            num_count = 1
+            num_count = 5
         else:
             num_count = 3 if is_nepal else 6
         await q.edit_message_text(f"⏳ Fetching {num_count} numbers for {display}...")
