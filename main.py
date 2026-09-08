@@ -734,85 +734,94 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     submissions = load_json(SUBMIT_FILE, [])
     if not submissions:
-        await update.message.reply_text("📁 No new submissions\nSaradin user ra file joma dile rate export korle pabe, next time new file na asle khali thakbe")
+        await update.message.reply_text("📁 No new submissions")
         return
     
-    # User wants: Google Sheet A,B,C column format
-    # Format: UID  PASS  COOKIES -> Tab separated so pasting in Google Sheet goes to A,B,C
-    txt_path = SUBMIT_SHEET_FILE
-    tsv_path = os.path.join(BASE_DIR, "submitted_data_tsv.txt")
+    # User wants XLS file with 3 columns: UID, PASS, COOKIES
+    xls_path = os.path.join(BASE_DIR, "submitted_data.xlsx")
     csv_path = os.path.join(BASE_DIR, "submitted_data.csv")
     
-    with open(txt_path, 'w', encoding='utf-8') as f:
-        with open(tsv_path, 'w', encoding='utf-8') as tf:
-            with open(csv_path, 'w', encoding='utf-8') as cf:
-                # CSV header
-                cf.write("UID,Password,Cookies\n")
-                for sub in submissions:
-                    content = sub.get('content','').strip()
-                    # Parse: Expected format "UID PASS COOKIES" - 3 parts
-                    # Example: "61593326023038  Polas@22  datr=CmSI..."
-                    # Split by 2+ spaces or tab
-                    import re
-                    # Try to split into 3 columns: UID, PASS, COOKIES
-                    parts = re.split(r'\s{2,}|\t', content)  # Split by 2+ spaces or tab
-                    if len(parts) >= 3:
-                        uid = parts[0].strip()
-                        pwd = parts[1].strip()
-                        cookies = " ".join(parts[2:]).strip()
-                    else:
-                        # Fallback: split by single space, first 2 tokens as UID,PASS, rest as cookies
-                        tokens = content.split()
-                        if len(tokens) >= 3:
-                            uid = tokens[0]
-                            pwd = tokens[1]
-                            cookies = " ".join(tokens[2:])
-                        elif len(tokens) == 2:
-                            uid = tokens[0]
-                            pwd = tokens[1]
-                            cookies = ""
-                        else:
-                            uid = content
-                            pwd = ""
-                            cookies = ""
-                    
-                    # For txt file - tab separated for Google Sheet A,B,C
-                    tf.write(f"{uid}\t{pwd}\t{cookies}\n")
-                    # For txt - also simple version
-                    f.write(f"{content}\n")
-                    # For CSV - quoted cookies to handle commas
-                    # Escape quotes in cookies
-                    cookies_esc = cookies.replace('"', '""')
-                    cf.write(f'"{uid}","{pwd}","{cookies_esc}"\n')
+    rows = []
+    for sub in submissions:
+        content = sub.get('content','').strip()
+        if not content:
+            continue
+        import re
+        # Parse: UID  PASS  COOKIES - 3 columns
+        # Example: "61593326023038  Polas@22  datr=CmSI...; sb=..."
+        parts = re.split(r'\s{2,}|\t', content)
+        if len(parts) >= 3:
+            uid = parts[0].strip()
+            pwd = parts[1].strip()
+            cookies = " ".join(parts[2:]).strip()
+        else:
+            tokens = content.split()
+            if len(tokens) >= 3:
+                uid = tokens[0]
+                pwd = tokens[1]
+                cookies = " ".join(tokens[2:])
+            elif len(tokens) == 2:
+                uid = tokens[0]
+                pwd = tokens[1]
+                cookies = ""
+            else:
+                uid = content
+                pwd = ""
+                cookies = ""
+        rows.append([uid, pwd, cookies])
     
-    count = len(submissions)
-    await update.message.reply_text(f"📊 Exported {count} submissions\n📋 Format: UID | PASS | COOKIES (A,B,C columns)\nPaste TSV in Google Sheet -> auto splits to A,B,C")
+    # Create XLS file
     try:
-        # Send TSV which is best for Google Sheet paste
-        await update.message.reply_document(document=open(tsv_path, 'rb'), filename="submitted_data_tsv.txt")
-        await update.message.reply_document(document=open(csv_path, 'rb'), filename="submitted_data.csv")
-        await update.message.reply_document(document=open(txt_path, 'rb'), filename="submitted_data.txt")
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Submissions"
+        ws.append(["UID", "Password", "Cookies"])
+        from openpyxl.styles import Font
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for row in rows:
+            ws.append(row)
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 80
+        wb.save(xls_path)
+        has_xls = True
+    except Exception as e:
+        print(f"[XLS ERR] {e} - trying CSV fallback")
+        has_xls = False
+        # Create CSV as fallback
+        import csv
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["UID", "Password", "Cookies"])
+            writer.writerows(rows)
+        xls_path = csv_path
+    
+    # Also create CSV always
+    try:
+        import csv
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["UID", "Password", "Cookies"])
+            writer.writerows(rows)
+    except: pass
+    
+    count = len(rows)
+    await update.message.reply_text(f"📊 Exported {count} submissions - XLS file with 3 columns")
+    try:
+        if has_xls and os.path.exists(xls_path):
+            await update.message.reply_document(document=open(xls_path, 'rb'), filename="submitted_data.xlsx")
+        if os.path.exists(csv_path):
+            await update.message.reply_document(document=open(csv_path, 'rb'), filename="submitted_data.csv")
         
-        # Also send instructions
-        await update.message.reply_text(
-            "📋 **Google Sheet e kivabe paste korba:**\n\n"
-            "1. TSV file kholo\n"
-            "2. Sob copy koro\n"
-            "3. Google Sheet e A1 cell e paste koro\n"
-            "4. Auto A=UID, B=PASS, C=COOKIES hoye jabe!\n\n"
-            "Or CSV file import koro Google Sheet e",
-            parse_mode="Markdown"
-        )
-        
-        # After successful export, CLEAR all submissions - user request: next time same file won't come
+        # Clear after export - next time same file won't come
         save_json(SUBMIT_FILE, [])
         try:
-            with open(txt_path, 'w', encoding='utf-8') as f:
+            with open(SUBMIT_SHEET_FILE, 'w', encoding='utf-8') as f:
                 f.write("")
-            with open(tsv_path, 'w', encoding='utf-8') as f:
-                f.write("")
-            with open(csv_path, 'w', encoding='utf-8') as f:
-                f.write("")
+            if os.path.exists(xls_path) and xls_path != csv_path:
+                os.remove(xls_path)
             import shutil
             submit_dir = os.path.join(BASE_DIR, "submitted_files")
             if os.path.exists(submit_dir):
@@ -820,9 +829,11 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 os.makedirs(submit_dir, exist_ok=True)
         except: pass
         
-        await update.message.reply_text(f"✅ Cleared! {count} files exported and deleted\nNext export will be empty until new files")
+        await update.message.reply_text(f"✅ Cleared! {count} rows exported and deleted\nNext export empty until new submissions")
     except Exception as e:
         await update.message.reply_text(f"Export error: {e}")
+        import traceback
+        traceback.print_exc()
 
 def push_to_google_sheet(uid, pwd, cookies):
     # Disabled - user wants XLS file only
