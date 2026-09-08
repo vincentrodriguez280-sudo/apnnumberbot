@@ -40,6 +40,9 @@ RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
 MAINT_FILE = os.path.join(BASE_DIR, "maintenance.json")
 ACTIVE_FILE = os.path.join(BASE_DIR, "active_numbers.json")
 WALLET_FILE = os.path.join(BASE_DIR, "wallets.json")
+SUBMIT_FILE = os.path.join(BASE_DIR, "submissions.json")
+SUBMIT_TOGGLE_FILE = os.path.join(BASE_DIR, "submit_toggle.json")
+SUBMIT_SHEET_FILE = os.path.join(BASE_DIR, "submitted_data.txt")
 
 if not os.path.exists(RANGES_FILE) and os.path.exists("ranges.json"):
     try:
@@ -433,7 +436,105 @@ async def restore_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             txt += f"❌ {fn}: not found\n"
     await update.message.reply_text(txt)
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    # Check if it's a file submission (user in submit mode)
+    if context.user_data.get("awaiting_file_submit") or (update.message.document and not (update.effective_user.id == ADMIN_ID and ("balances" in update.message.document.file_name.lower() or "backup" in update.message.document.file_name.lower()))):
+        # This is a file submission from user
+        if not is_file_submit_enabled():
+            await update.message.reply_text("❌ File Submit is disabled")
+            context.user_data["awaiting_file_submit"] = False
+            return
+        
+        doc = update.message.document
+        if not doc:
+            return
+        
+        # Check file type - allow xls, xlsx, txt, csv, etc
+        fname = doc.file_name.lower()
+        allowed = ['xls', 'xlsx', 'txt', 'csv', 'doc', 'docx']
+        is_allowed = any(fname.endswith(ext) for ext in allowed)
+        
+        # Also allow if user is in submit mode (any file)
+        if not is_allowed and not context.user_data.get("awaiting_file_submit"):
+            # If not in submit mode and not balances file, ignore
+            if uid != ADMIN_ID:
+                return
+        
+        # If admin uploading balances, handle as restore
+        if uid == ADMIN_ID and ("balances" in fname or "backup" in fname):
+            try:
+                file = await context.bot.get_file(doc.file_id)
+                for path in [BAL_FILE, "./balances.json"]:
+                    try:
+                        await file.download_to_drive(path)
+                    except: pass
+                db = load_json(BAL_FILE, {})
+                await update.message.reply_text(f"✅ Restored! Users: {len(db)}")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Restore failed: {e}")
+            return
+        
+        # File submission
+        try:
+            # Download file
+            file = await context.bot.get_file(doc.file_id)
+            # Save to submissions folder
+            submit_dir = os.path.join(BASE_DIR, "submitted_files")
+            os.makedirs(submit_dir, exist_ok=True)
+            file_path = os.path.join(submit_dir, f"{uid}_{int(datetime.now().timestamp())}_{doc.file_name}")
+            await file.download_to_drive(file_path)
+            
+            # Try to read content if text/csv
+            content_preview = doc.file_name
+            try:
+                if fname.endswith('.txt') or fname.endswith('.csv'):
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content_preview = f.read()[:500]
+            except: pass
+            
+            submissions = load_json(SUBMIT_FILE, [])
+            submission = {
+                "serial": len(submissions) + 1,
+                "user_id": str(uid),
+                "username": update.effective_user.username or update.effective_user.first_name or "N/A",
+                "time": datetime.now().isoformat(),
+                "type": f"file - {doc.file_name}",
+                "content": content_preview[:1000],
+                "file_path": file_path,
+                "file_name": doc.file_name
+            }
+            submissions.append(submission)
+            save_json(SUBMIT_FILE, submissions)
+            
+            # Append to sheet
+            try:
+                with open(SUBMIT_SHEET_FILE, 'a', encoding='utf-8') as f:
+                    f.write(f"=== {submission['serial']} ===\n")
+                    f.write(f"User: {submission['user_id']} (@{submission['username']})\n")
+                    f.write(f"Time: {submission['time']}\n")
+                    f.write(f"Type: file - {doc.file_name}\n")
+                    f.write(f"Content: {content_preview[:500]}\n")
+                    f.write(f"File: {file_path}\n\n")
+            except: pass
+            
+            context.user_data["awaiting_file_submit"] = False
+            await update.message.reply_text(f"✅ File submitted!\n\n📊 Serial: {submission['serial']}\n📄 File: {doc.file_name}\n💾 Saved to sheet\n\nThank you!", reply_markup=bottom_keyboard())
+            
+            # Notify admin
+            try:
+                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New File Submit #{submission['serial']}\n👤 {uid} (@{submission['username']})\n📄 {doc.file_name}")
+                await context.bot.send_document(chat_id=ADMIN_ID, document=open(file_path, 'rb'), filename=doc.file_name)
+            except: pass
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ File submit failed: {e}")
+        return
+
 async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Legacy - now handled in handle_document
+    await handle_document(update, context)
+    return
     if update.effective_user.id != ADMIN_ID: return
     if not update.message.document: return
     fname = update.message.document.file_name
@@ -481,15 +582,33 @@ async def animate_menu_task(context, chat_id, message_id):
         pass
 
 def bottom_keyboard():
-    return ReplyKeyboardMarkup(
-        [
-            [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
-            [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
-            [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")]
-        ],
-        resize_keyboard=True,
-        is_persistent=True
-    )
+    # Check if File Submit is enabled
+    toggle = load_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
+    if toggle.get("enabled", True):
+        return ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
+                [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
+                [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")],
+                [KeyboardButton("📁 File Submit")]
+            ],
+            resize_keyboard=True,
+            is_persistent=True
+        )
+    else:
+        return ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
+                [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
+                [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")]
+            ],
+            resize_keyboard=True,
+            is_persistent=True
+        )
+
+def is_file_submit_enabled():
+    toggle = load_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
+    return toggle.get("enabled", True)
 
 async def debug_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug command to check number files"""
@@ -517,6 +636,93 @@ async def debug_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msg += f"{fp}: error {e}\n"
             except: pass
     await update.message.reply_text(msg[:4000])
+
+async def file_submit_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle File Submit on/off - /file_on /file_off /filesubmit"""
+    if update.effective_user.id != ADMIN_ID:
+        return
+    args = context.args
+    if not args:
+        status = is_file_submit_enabled()
+        txt = f"📁 File Submit Status: {'🟢 ON' if status else '🔴 OFF'}\n\nCommands:\n/file_on - Enable File Submit\n/file_off - Disable File Submit\n/file_status - Check status\n/submissions - View all submissions"
+        await update.message.reply_text(txt)
+        return
+    
+    cmd = args[0].lower() if args else ""
+    if cmd in ["on", "enable", "1"]:
+        save_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
+        await update.message.reply_text("✅ File Submit ENABLED\nUsers will see 📁 File Submit button")
+    elif cmd in ["off", "disable", "0"]:
+        save_json(SUBMIT_TOGGLE_FILE, {"enabled": False})
+        await update.message.reply_text("❌ File Submit DISABLED\nButton hidden from users")
+    else:
+        status = is_file_submit_enabled()
+        await update.message.reply_text(f"📁 File Submit: {'ON' if status else 'OFF'}\nUse: /file_on or /file_off")
+
+async def file_submit_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    enabled = is_file_submit_enabled()
+    submissions = load_json(SUBMIT_FILE, [])
+    txt = f"📁 File Submit: {'🟢 ON' if enabled else '🔴 OFF'}\n📊 Total submissions: {len(submissions)}\n\nCommands:\n/file_on - Enable\n/file_off - Disable\n/submissions - View all\n/export_submissions - Export sheet"
+    await update.message.reply_text(txt)
+
+async def view_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    submissions = load_json(SUBMIT_FILE, [])
+    if not submissions:
+        await update.message.reply_text("📁 No submissions yet")
+        return
+    
+    txt = f"📁 Total Submissions: {len(submissions)}\n\n"
+    # Show last 10
+    for i, sub in enumerate(submissions[-10:], start=max(1, len(submissions)-9)):
+        txt += f"{i}. 👤 {sub.get('user_id')} | {sub.get('username','N/A')}\n"
+        txt += f"   📅 {sub.get('time','')[:16]}\n"
+        txt += f"   📄 {sub.get('type','')} | {sub.get('content','')[:50]}...\n\n"
+    
+    if len(submissions) > 10:
+        txt += f"... and {len(submissions)-10} more. Use /export_submissions for full sheet"
+    
+    await update.message.reply_text(txt[:4000])
+
+async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    submissions = load_json(SUBMIT_FILE, [])
+    if not submissions:
+        await update.message.reply_text("No submissions")
+        return
+    
+    # Create sheet text
+    sheet_text = "Serial, User ID, Username, Time, Type, Content\n"
+    for idx, sub in enumerate(submissions, 1):
+        content = sub.get('content','').replace(',', ';').replace('\n', ' ')[:200]
+        sheet_text += f"{idx}, {sub.get('user_id')}, {sub.get('username','')}, {sub.get('time','')}, {sub.get('type','')}, {content}\n"
+    
+    # Save to file
+    sheet_path = os.path.join(BASE_DIR, "submissions_sheet.csv")
+    with open(sheet_path, 'w', encoding='utf-8') as f:
+        f.write(sheet_text)
+    
+    # Also save txt version
+    txt_path = SUBMIT_SHEET_FILE
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        for idx, sub in enumerate(submissions, 1):
+            f.write(f"=== {idx} ===\n")
+            f.write(f"User: {sub.get('user_id')} (@{sub.get('username','')})\n")
+            f.write(f"Time: {sub.get('time')}\n")
+            f.write(f"Type: {sub.get('type')}\n")
+            f.write(f"Content: {sub.get('content')}\n")
+            f.write("\n")
+    
+    await update.message.reply_text(f"📊 Exported {len(submissions)} submissions")
+    try:
+        await update.message.reply_document(document=open(sheet_path, 'rb'), filename="submissions_sheet.csv")
+        await update.message.reply_document(document=open(txt_path, 'rb'), filename="submitted_data.txt")
+    except Exception as e:
+        await update.message.reply_text(f"Export error: {e}")
 
 async def refresh_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refresh /data files from Github - fixes Mozambique issue"""
@@ -656,6 +862,60 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
             await update.message.reply_text("Menu:", reply_markup=main_menu_keyboard())
             return
+
+    # File Submit feature
+    if "File Submit" in text or "📁 File Submit" in text:
+        if not is_file_submit_enabled():
+            await update.message.reply_text("❌ File Submit is currently disabled")
+            return
+        # Set user in file submit mode
+        context.user_data["awaiting_file_submit"] = True
+        txt = "📁 **File Submit**\n\n📤 Submit your file:\n\n✅ Supported:\n• Excel (xls, xlsx)\n• Text (txt)\n• Plain text\n\nJust send your file or paste text here!"
+        kb = [[InlineKeyboardButton("❌ Cancel", callback_data="cancel_file_submit")]]
+        await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        return
+
+    # If user is in file submit mode and sends text (not a button)
+    if context.user_data.get("awaiting_file_submit"):
+        # Check if it's a button press that should cancel file submit mode
+        if any(k in text for k in ["Get Number", "Status", "Active Number", "Support", "Refer", "Wallet"]):
+            context.user_data["awaiting_file_submit"] = False
+        else:
+            # User submitted text content
+            if len(text) > 2 and "File Submit" not in text:
+                # Save submission
+                submissions = load_json(SUBMIT_FILE, [])
+                submission = {
+                    "serial": len(submissions) + 1,
+                    "user_id": str(uid),
+                    "username": update.effective_user.username or update.effective_user.first_name or "N/A",
+                    "time": datetime.now().isoformat(),
+                    "type": "text",
+                    "content": text[:1000]  # Limit to 1000 chars
+                }
+                submissions.append(submission)
+                save_json(SUBMIT_FILE, submissions)
+                
+                # Also append to sheet txt
+                try:
+                    with open(SUBMIT_SHEET_FILE, 'a', encoding='utf-8') as f:
+                        f.write(f"=== {submission['serial']} ===\n")
+                        f.write(f"User: {submission['user_id']} (@{submission['username']})\n")
+                        f.write(f"Time: {submission['time']}\n")
+                        f.write(f"Type: text\n")
+                        f.write(f"Content: {text}\n")
+                        f.write("\n")
+                except: pass
+                
+                context.user_data["awaiting_file_submit"] = False
+                await update.message.reply_text(f"✅ File submitted successfully!\n\n📊 Serial: {submission['serial']}\n📄 Type: Text\n📝 Content saved to sheet\n\nThank you!", reply_markup=bottom_keyboard())
+                
+                # Notify admin
+                try:
+                    await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New File Submit #{submission['serial']}\n👤 User: {uid} (@{submission['username']})\n📄 Type: Text\n📝 {text[:200]}")
+                except: pass
+                
+                return
 
     if "Get Number" in text:
         txt = "⚙️ কোন প্ল্যাটফর্মের জন্য নাম্বার নিবেন?"
@@ -821,6 +1081,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt += "────────────────────"
         kb = [[InlineKeyboardButton("⬅️ Back", callback_data="main")]]
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    if data == "cancel_file_submit":
+        context.user_data["awaiting_file_submit"] = False
+        await q.edit_message_text("❌ File Submit cancelled", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+        await context.bot.send_message(chat_id=uid, text="Menu:", reply_markup=bottom_keyboard())
         return
 
     if data == "support":
@@ -1057,6 +1323,13 @@ app.add_handler(CommandHandler("mynumbers", debug_numbers))
 app.add_handler(CommandHandler("refresh", refresh_numbers))
 app.add_handler(CommandHandler("clearmoz", clear_mozambique))
 app.add_handler(CommandHandler("clear_mozambique", clear_mozambique))
+app.add_handler(CommandHandler("file_on", file_submit_toggle))
+app.add_handler(CommandHandler("file_off", file_submit_toggle))
+app.add_handler(CommandHandler("file", file_submit_toggle))
+app.add_handler(CommandHandler("filesubmit", file_submit_toggle))
+app.add_handler(CommandHandler("file_status", file_submit_status))
+app.add_handler(CommandHandler("submissions", view_submissions))
+app.add_handler(CommandHandler("export_submissions", export_submissions))
 app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
 app.add_handler(CommandHandler("del", del_range))
@@ -1066,7 +1339,7 @@ app.add_handler(CommandHandler("on", bot_on))
 app.add_handler(CommandHandler("botstatus", bot_status))
 app.add_handler(CommandHandler("backup", backup_data))
 app.add_handler(CommandHandler("data", restore_info))
-app.add_handler(MessageHandler(filters.Document.ALL, handle_restore_file))
+app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 app.add_handler(CallbackQueryHandler(handle))
 app.run_polling(drop_pending_updates=True)
