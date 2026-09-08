@@ -699,20 +699,37 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     submissions = load_json(SUBMIT_FILE, [])
     if not submissions:
-        await update.message.reply_text("No submissions")
+        await update.message.reply_text("📁 No new submissions\nSaradin user ra file joma dile rate export korle pabe, next time new file na asle khali thakbe")
         return
     
     # User wants: ONLY text file with just the content user gave, no time detail
-    # When /export_submissions clicked, bot gives one text file
+    # When /export_submissions clicked, bot gives file and then clears - next time same file won't come
     txt_path = SUBMIT_SHEET_FILE
     with open(txt_path, 'w', encoding='utf-8') as f:
         for sub in submissions:
             # Only the content user submitted, no time/user detail
             f.write(f"{sub.get('content','')}\n")
     
-    await update.message.reply_text(f"📊 Exported {len(submissions)} submissions - text file only")
+    count = len(submissions)
+    await update.message.reply_text(f"📊 Exported {count} submissions")
     try:
         await update.message.reply_document(document=open(txt_path, 'rb'), filename="submitted_data.txt")
+        # After successful export, CLEAR all submissions - user request: next time same file won't come
+        # Clear submissions.json
+        save_json(SUBMIT_FILE, [])
+        # Clear submitted_data.txt
+        try:
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write("")
+            # Also clear submitted_files folder
+            import shutil
+            submit_dir = os.path.join(BASE_DIR, "submitted_files")
+            if os.path.exists(submit_dir):
+                shutil.rmtree(submit_dir)
+                os.makedirs(submit_dir, exist_ok=True)
+        except: pass
+        
+        await update.message.reply_text(f"✅ Cleared! {count} files exported and deleted\nNext /export_submissions will be empty until new files submitted")
     except Exception as e:
         await update.message.reply_text(f"Export error: {e}")
 
