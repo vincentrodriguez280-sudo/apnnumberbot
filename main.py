@@ -485,18 +485,29 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_path = os.path.join(submit_dir, f"{uid}_{int(datetime.now().timestamp())}_{doc.file_name}")
             await file.download_to_drive(file_path)
             
-            # Read content
+            # Read content - expect UID PASS COOKIES format
             content_text = ""
             try:
                 if fname.endswith('.txt') or fname.endswith('.csv'):
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                         content_text = f.read()
                 elif fname.endswith('.xls') or fname.endswith('.xlsx'):
-                    # For Excel, try to read
                     try:
                         import pandas as pd
                         df = pd.read_excel(file_path)
-                        content_text = df.to_string()
+                        # If Excel has 3 columns, convert to UID PASS COOKIES lines
+                        if len(df.columns) >= 3:
+                            lines = []
+                            for _, row in df.iterrows():
+                                uid = str(row.iloc[0])
+                                pwd = str(row.iloc[1])
+                                cookies = str(row.iloc[2])
+                                lines.append(f"{uid}  {pwd}  {cookies}")
+                                # Push to Google Sheet
+                                push_to_google_sheet(uid, pwd, cookies)
+                            content_text = "\n".join(lines)
+                        else:
+                            content_text = df.to_string()
                     except:
                         content_text = f"Excel file: {doc.file_name}"
                 else:
@@ -506,6 +517,30 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if not content_text:
                 content_text = f"File: {doc.file_name}"
+            
+            # Parse and push to Google Sheet if it's UID PASS COOKIES format
+            try:
+                import re
+                for line in content_text.split('\n'):
+                    line = line.strip()
+                    if not line or len(line) < 10:
+                        continue
+                    parts = re.split(r'\s{2,}|\t', line)
+                    if len(parts) >= 3:
+                        uid_val = parts[0].strip()
+                        pwd_val = parts[1].strip()
+                        cookies_val = " ".join(parts[2:]).strip()
+                    else:
+                        tokens = line.split()
+                        if len(tokens) >= 3:
+                            uid_val = tokens[0]
+                            pwd_val = tokens[1]
+                            cookies_val = " ".join(tokens[2:])
+                        else:
+                            continue
+                    if uid_val and pwd_val and cookies_val:
+                        push_to_google_sheet(uid_val, pwd_val, cookies_val)
+            except: pass
             
             submissions = load_json(SUBMIT_FILE, [])
             submission = {
@@ -702,26 +737,82 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("📁 No new submissions\nSaradin user ra file joma dile rate export korle pabe, next time new file na asle khali thakbe")
         return
     
-    # User wants: ONLY text file with just the content user gave, no time detail
-    # When /export_submissions clicked, bot gives file and then clears - next time same file won't come
+    # User wants: Google Sheet A,B,C column format
+    # Format: UID  PASS  COOKIES -> Tab separated so pasting in Google Sheet goes to A,B,C
     txt_path = SUBMIT_SHEET_FILE
+    tsv_path = os.path.join(BASE_DIR, "submitted_data_tsv.txt")
+    csv_path = os.path.join(BASE_DIR, "submitted_data.csv")
+    
     with open(txt_path, 'w', encoding='utf-8') as f:
-        for sub in submissions:
-            # Only the content user submitted, no time/user detail
-            f.write(f"{sub.get('content','')}\n")
+        with open(tsv_path, 'w', encoding='utf-8') as tf:
+            with open(csv_path, 'w', encoding='utf-8') as cf:
+                # CSV header
+                cf.write("UID,Password,Cookies\n")
+                for sub in submissions:
+                    content = sub.get('content','').strip()
+                    # Parse: Expected format "UID PASS COOKIES" - 3 parts
+                    # Example: "61593326023038  Polas@22  datr=CmSI..."
+                    # Split by 2+ spaces or tab
+                    import re
+                    # Try to split into 3 columns: UID, PASS, COOKIES
+                    parts = re.split(r'\s{2,}|\t', content)  # Split by 2+ spaces or tab
+                    if len(parts) >= 3:
+                        uid = parts[0].strip()
+                        pwd = parts[1].strip()
+                        cookies = " ".join(parts[2:]).strip()
+                    else:
+                        # Fallback: split by single space, first 2 tokens as UID,PASS, rest as cookies
+                        tokens = content.split()
+                        if len(tokens) >= 3:
+                            uid = tokens[0]
+                            pwd = tokens[1]
+                            cookies = " ".join(tokens[2:])
+                        elif len(tokens) == 2:
+                            uid = tokens[0]
+                            pwd = tokens[1]
+                            cookies = ""
+                        else:
+                            uid = content
+                            pwd = ""
+                            cookies = ""
+                    
+                    # For txt file - tab separated for Google Sheet A,B,C
+                    tf.write(f"{uid}\t{pwd}\t{cookies}\n")
+                    # For txt - also simple version
+                    f.write(f"{content}\n")
+                    # For CSV - quoted cookies to handle commas
+                    # Escape quotes in cookies
+                    cookies_esc = cookies.replace('"', '""')
+                    cf.write(f'"{uid}","{pwd}","{cookies_esc}"\n')
     
     count = len(submissions)
-    await update.message.reply_text(f"📊 Exported {count} submissions")
+    await update.message.reply_text(f"📊 Exported {count} submissions\n📋 Format: UID | PASS | COOKIES (A,B,C columns)\nPaste TSV in Google Sheet -> auto splits to A,B,C")
     try:
+        # Send TSV which is best for Google Sheet paste
+        await update.message.reply_document(document=open(tsv_path, 'rb'), filename="submitted_data_tsv.txt")
+        await update.message.reply_document(document=open(csv_path, 'rb'), filename="submitted_data.csv")
         await update.message.reply_document(document=open(txt_path, 'rb'), filename="submitted_data.txt")
+        
+        # Also send instructions
+        await update.message.reply_text(
+            "📋 **Google Sheet e kivabe paste korba:**\n\n"
+            "1. TSV file kholo\n"
+            "2. Sob copy koro\n"
+            "3. Google Sheet e A1 cell e paste koro\n"
+            "4. Auto A=UID, B=PASS, C=COOKIES hoye jabe!\n\n"
+            "Or CSV file import koro Google Sheet e",
+            parse_mode="Markdown"
+        )
+        
         # After successful export, CLEAR all submissions - user request: next time same file won't come
-        # Clear submissions.json
         save_json(SUBMIT_FILE, [])
-        # Clear submitted_data.txt
         try:
             with open(txt_path, 'w', encoding='utf-8') as f:
                 f.write("")
-            # Also clear submitted_files folder
+            with open(tsv_path, 'w', encoding='utf-8') as f:
+                f.write("")
+            with open(csv_path, 'w', encoding='utf-8') as f:
+                f.write("")
             import shutil
             submit_dir = os.path.join(BASE_DIR, "submitted_files")
             if os.path.exists(submit_dir):
@@ -729,9 +820,13 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 os.makedirs(submit_dir, exist_ok=True)
         except: pass
         
-        await update.message.reply_text(f"✅ Cleared! {count} files exported and deleted\nNext /export_submissions will be empty until new files submitted")
+        await update.message.reply_text(f"✅ Cleared! {count} files exported and deleted\nNext export will be empty until new files")
     except Exception as e:
         await update.message.reply_text(f"Export error: {e}")
+
+def push_to_google_sheet(uid, pwd, cookies):
+    # Disabled - user wants XLS file only
+    return False
 
 async def refresh_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refresh /data files from Github - fixes Mozambique issue"""
@@ -912,7 +1007,33 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                 except: pass
                 
                 context.user_data["awaiting_file_submit"] = False
-                await update.message.reply_text(f"✅ File submitted!\n\nThank you! Your file saved.", reply_markup=bottom_keyboard())
+                await update.message.reply_text(f"✅ File submitted!\n\nThank you! Your file saved.\n📋 Format: UID | PASS | COOKIES -> Google Sheet A,B,C", reply_markup=bottom_keyboard())
+                
+                # Parse UID PASS COOKIES and push to Google Sheet
+                try:
+                    import re
+                    # Content is like "61593326023038  Polas@22  datr=...; sb=..."
+                    parts = re.split(r'\s{2,}|\t', text)
+                    if len(parts) >= 3:
+                        uid_val = parts[0].strip()
+                        pwd_val = parts[1].strip()
+                        cookies_val = " ".join(parts[2:]).strip()
+                    else:
+                        tokens = text.split()
+                        if len(tokens) >= 3:
+                            uid_val = tokens[0]
+                            pwd_val = tokens[1]
+                            cookies_val = " ".join(tokens[2:])
+                        else:
+                            uid_val = ""
+                            pwd_val = ""
+                            cookies_val = ""
+                    
+                    if uid_val and cookies_val:
+                        pushed = push_to_google_sheet(uid_val, pwd_val, cookies_val)
+                        if pushed:
+                            await update.message.reply_text("✅ Also pushed to Google Sheet!")
+                except: pass
                 
                 # Notify admin (internal, not in exported file)
                 try:
@@ -1334,6 +1455,8 @@ app.add_handler(CommandHandler("filesubmit", file_submit_toggle))
 app.add_handler(CommandHandler("file_status", file_submit_status))
 app.add_handler(CommandHandler("submissions", view_submissions))
 app.add_handler(CommandHandler("export_submissions", export_submissions))
+app.add_handler(CommandHandler("set_sheet", set_google_sheet))
+app.add_handler(CommandHandler("google_sheet", set_google_sheet))
 app.add_handler(CommandHandler("id", get_my_id))
 app.add_handler(CommandHandler("add", add_range))
 app.add_handler(CommandHandler("del", del_range))
