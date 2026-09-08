@@ -485,35 +485,113 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_path = os.path.join(submit_dir, f"{uid}_{int(datetime.now().timestamp())}_{doc.file_name}")
             await file.download_to_drive(file_path)
             
-            # Read content - expect UID PASS COOKIES format
+            # Read content - FIXED: Properly read XLSX with openpyxl to get all 100 rows
             content_text = ""
             try:
                 if fname.endswith('.txt') or fname.endswith('.csv'):
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                         content_text = f.read()
                 elif fname.endswith('.xls') or fname.endswith('.xlsx'):
+                    # Try openpyxl first (best for xlsx)
                     try:
-                        import pandas as pd
-                        df = pd.read_excel(file_path)
-                        # If Excel has 3 columns, convert to UID PASS COOKIES lines
-                        if len(df.columns) >= 3:
+                        import openpyxl
+                        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+                        ws = wb.active
+                        lines = []
+                        for row in ws.iter_rows(values_only=True):
+                            # Skip empty rows
+                            if not row or all(v is None or str(v).strip() == "" for v in row):
+                                continue
+                            # Convert row to strings, filter None
+                            row_vals = [str(v).strip() if v is not None else "" for v in row]
+                            # Remove empty strings at end
+                            while row_vals and row_vals[-1] == "":
+                                row_vals.pop()
+                            if not row_vals:
+                                continue
+                            # If row has 3+ columns: UID, PASS, COOKIES
+                            if len(row_vals) >= 3:
+                                uid_val = row_vals[0]
+                                pwd_val = row_vals[1]
+                                cookies_val = " ".join(row_vals[2:]) if len(row_vals) > 2 else ""
+                                # Handle case where A column has "UID PASS" together
+                                if " " in uid_val and not pwd_val:
+                                    # Split A column by space
+                                    parts = uid_val.split()
+                                    if len(parts) >= 2:
+                                        uid_val = parts[0]
+                                        pwd_val = parts[1]
+                                        # If cookies in same cell after password
+                                        if len(parts) > 2:
+                                            cookies_val = " ".join(parts[2:]) + " " + cookies_val
+                                lines.append(f"{uid_val}  {pwd_val}  {cookies_val}")
+                            elif len(row_vals) == 2:
+                                # 2 columns: maybe UID+PASS in first, cookies in second
+                                first = row_vals[0]
+                                second = row_vals[1]
+                                if " " in first:
+                                    # First column has UID PASS
+                                    parts = first.split()
+                                    if len(parts) >= 2:
+                                        uid_val = parts[0]
+                                        pwd_val = parts[1]
+                                        cookies_val = " ".join(parts[2:]) + " " + second if len(parts) > 2 else second
+                                    else:
+                                        uid_val = first
+                                        pwd_val = ""
+                                        cookies_val = second
+                                else:
+                                    uid_val = first
+                                    pwd_val = ""
+                                    cookies_val = second
+                                lines.append(f"{uid_val}  {pwd_val}  {cookies_val}")
+                            elif len(row_vals) == 1:
+                                # Single column with UID PASS COOKIES in one line
+                                lines.append(row_vals[0])
+                        wb.close()
+                        content_text = "\n".join(lines)
+                        print(f"[XLSX READ] Got {len(lines)} lines from {doc.file_name}")
+                    except Exception as e:
+                        print(f"[XLSX OPENPYXL ERR] {e}, trying pandas")
+                        # Fallback to pandas
+                        try:
+                            import pandas as pd
+                            df = pd.read_excel(file_path, header=None)
                             lines = []
                             for _, row in df.iterrows():
-                                uid = str(row.iloc[0])
-                                pwd = str(row.iloc[1])
-                                cookies = str(row.iloc[2])
-                                lines.append(f"{uid}  {pwd}  {cookies}")
-                                # Push to Google Sheet
-                                push_to_google_sheet(uid, pwd, cookies)
+                                # Skip empty
+                                if row.isna().all():
+                                    continue
+                                row_vals = [str(v).strip() if not pd.isna(v) else "" for v in row]
+                                # Clean
+                                row_vals = [v for v in row_vals if v]
+                                if not row_vals:
+                                    continue
+                                if len(row_vals) >= 3:
+                                    lines.append(f"{row_vals[0]}  {row_vals[1]}  {' '.join(row_vals[2:])}")
+                                elif len(row_vals) == 2:
+                                    lines.append(f"{row_vals[0]}  {row_vals[1]}")
+                                elif len(row_vals) == 1:
+                                    lines.append(row_vals[0])
                             content_text = "\n".join(lines)
-                        else:
-                            content_text = df.to_string()
-                    except:
-                        content_text = f"Excel file: {doc.file_name}"
+                            print(f"[XLSX PANDAS] Got {len(lines)} lines")
+                        except Exception as e2:
+                            print(f"[XLSX PANDAS ERR] {e2}")
+                            content_text = f"Excel file: {doc.file_name} - READ FAILED: {e}"
                 else:
                     content_text = f"File: {doc.file_name}"
-            except:
-                content_text = f"File: {doc.file_name}"
+            except Exception as e:
+                print(f"[READ ERR] {e}")
+                content_text = f"File: {doc.file_name} - ERROR: {e}"
+            
+            if not content_text or content_text.startswith("Excel file:") or content_text.startswith("File:"):
+                # If still failed, try to read as text anyway
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        txt_content = f.read()
+                        if len(txt_content) > 20:
+                            content_text = txt_content
+                except: pass
             
             if not content_text:
                 content_text = f"File: {doc.file_name}"
