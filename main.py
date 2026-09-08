@@ -999,18 +999,33 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             num_count = 3 if is_nepal else 6
         await q.edit_message_text(f"⏳ Fetching {num_count} numbers for {display}...")
         nums = []
-        for i in range(num_count):
+        # For FB/WS, try harder to get 6 numbers (retry if panel fails)
+        max_attempts = num_count * 3  # Try 3x more than needed for FB/WS
+        attempts = 0
+        while len(nums) < num_count and attempts < max_attempts:
+            attempts += 1
             try:
                 order = await asyncio.to_thread(create_order, service, country_code)
             except Exception as e:
                 print(f"[CREATE THREAD ERR] {e}")
                 order = None
+            
             if order:
-                nums.append(order)
-                add_request(uid, display)
-                save_active_number(uid, order['number'], country_code, service)
-                context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
-                await asyncio.sleep(0.5)
+                # Check duplicate - don't add same number twice
+                if not any(o['number'] == order['number'] for o in nums):
+                    nums.append(order)
+                    add_request(uid, display)
+                    save_active_number(uid, order['number'], country_code, service)
+                    context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
+                    print(f"[FETCH] Got {len(nums)}/{num_count}: {order['number']} for {display}")
+                else:
+                    print(f"[FETCH] Duplicate skipped: {order['number']}")
+            else:
+                print(f"[FETCH] Failed attempt {attempts}/{max_attempts} for {display}")
+            
+            await asyncio.sleep(0.5)
+        
+        print(f"[FETCH DONE] Requested {num_count}, got {len(nums)} for {display}")
         if not nums:
             await q.edit_message_text(f"❌ Out of Stock! {display}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Try Again", callback_data=f"s_{service}")]]))
             return
