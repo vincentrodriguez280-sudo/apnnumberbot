@@ -621,15 +621,34 @@ def create_order(service, country_code):
         # If no file, return None to show out of stock
         print(f"[HAD] No numbers in file for {country_code}")
         return None
-    # Voltx for others
+    # Voltx for others - with retry (FB/WS 6 numbers fix)
     panel = PANELS["voltx"]
-    try:
-        r = requests.post(panel["allocate"], headers={"mauthapi": panel["key"], "Content-Type": "application/json"}, json={"rid": info["id"]}, timeout=20)
-        j = r.json()
-        if j.get("meta", {}).get("code") == 200 and j.get("data"):
-            return {"number": j["data"]["full_number"], "id": f"voltx|{j['data']['full_number']}", "source": "voltx"}
-        return None
-    except: return None
+    for attempt in range(3):  # 3 retries per number
+        try:
+            print(f"[VOLTX] Trying to get number for {country_code} (attempt {attempt+1}/3) - rid: {info['id']}")
+            r = requests.post(panel["allocate"], headers={"mauthapi": panel["key"], "Content-Type": "application/json"}, json={"rid": info["id"]}, timeout=20)
+            print(f"[VOLTX] Response status: {r.status_code}, text: {r.text[:200]}")
+            j = r.json()
+            if j.get("meta", {}).get("code") == 200 and j.get("data"):
+                full_num = j["data"]["full_number"]
+                print(f"[VOLTX] Got number: {full_num} for {country_code}")
+                return {"number": full_num, "id": f"voltx|{full_num}", "source": "voltx"}
+            else:
+                print(f"[VOLTX] Failed: {j}")
+                # If out of stock or error, try again
+                if attempt < 2:
+                    import time
+                    time.sleep(1)
+                    continue
+                return None
+        except Exception as e:
+            print(f"[VOLTX ERR] Attempt {attempt+1}: {e}")
+            if attempt < 2:
+                import time
+                time.sleep(1)
+                continue
+            return None
+    return None
 
 def get_otp(order_id):
     try:
