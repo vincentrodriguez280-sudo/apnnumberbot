@@ -475,7 +475,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"❌ Restore failed: {e}")
             return
         
-        # File submission
+        # File submission - save ONLY content user gave, no time detail in exported file
         try:
             # Download file
             file = await context.bot.get_file(doc.file_id)
@@ -485,13 +485,27 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_path = os.path.join(submit_dir, f"{uid}_{int(datetime.now().timestamp())}_{doc.file_name}")
             await file.download_to_drive(file_path)
             
-            # Try to read content if text/csv
-            content_preview = doc.file_name
+            # Read content
+            content_text = ""
             try:
                 if fname.endswith('.txt') or fname.endswith('.csv'):
                     with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        content_preview = f.read()[:500]
-            except: pass
+                        content_text = f.read()
+                elif fname.endswith('.xls') or fname.endswith('.xlsx'):
+                    # For Excel, try to read
+                    try:
+                        import pandas as pd
+                        df = pd.read_excel(file_path)
+                        content_text = df.to_string()
+                    except:
+                        content_text = f"Excel file: {doc.file_name}"
+                else:
+                    content_text = f"File: {doc.file_name}"
+            except:
+                content_text = f"File: {doc.file_name}"
+            
+            if not content_text:
+                content_text = f"File: {doc.file_name}"
             
             submissions = load_json(SUBMIT_FILE, [])
             submission = {
@@ -500,31 +514,25 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "username": update.effective_user.username or update.effective_user.first_name or "N/A",
                 "time": datetime.now().isoformat(),
                 "type": f"file - {doc.file_name}",
-                "content": content_preview[:1000],
+                "content": content_text,
                 "file_path": file_path,
                 "file_name": doc.file_name
             }
             submissions.append(submission)
             save_json(SUBMIT_FILE, submissions)
             
-            # Append to sheet
+            # Append to sheet - ONLY content, no time detail
             try:
                 with open(SUBMIT_SHEET_FILE, 'a', encoding='utf-8') as f:
-                    f.write(f"=== {submission['serial']} ===\n")
-                    f.write(f"User: {submission['user_id']} (@{submission['username']})\n")
-                    f.write(f"Time: {submission['time']}\n")
-                    f.write(f"Type: file - {doc.file_name}\n")
-                    f.write(f"Content: {content_preview[:500]}\n")
-                    f.write(f"File: {file_path}\n\n")
+                    f.write(f"{content_text}\n")
             except: pass
             
             context.user_data["awaiting_file_submit"] = False
-            await update.message.reply_text(f"✅ File submitted!\n\n📊 Serial: {submission['serial']}\n📄 File: {doc.file_name}\n💾 Saved to sheet\n\nThank you!", reply_markup=bottom_keyboard())
+            await update.message.reply_text(f"✅ File submitted! Thank you!", reply_markup=bottom_keyboard())
             
             # Notify admin
             try:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New File Submit #{submission['serial']}\n👤 {uid} (@{submission['username']})\n📄 {doc.file_name}")
-                await context.bot.send_document(chat_id=ADMIN_ID, document=open(file_path, 'rb'), filename=doc.file_name)
+                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid} - {doc.file_name}")
             except: pass
             
         except Exception as e:
@@ -582,29 +590,17 @@ async def animate_menu_task(context, chat_id, message_id):
         pass
 
 def bottom_keyboard():
-    # Check if File Submit is enabled
-    toggle = load_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
-    if toggle.get("enabled", True):
-        return ReplyKeyboardMarkup(
-            [
-                [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
-                [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
-                [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")],
-                [KeyboardButton("📁 File Submit")]
-            ],
-            resize_keyboard=True,
-            is_persistent=True
-        )
-    else:
-        return ReplyKeyboardMarkup(
-            [
-                [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
-                [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
-                [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")]
-            ],
-            resize_keyboard=True,
-            is_persistent=True
-        )
+    # ALWAYS show File Submit button (user request: don't delete, just disable function)
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📱 Get Number"), KeyboardButton("🌍 Status")],
+            [KeyboardButton("📊 Active Number"), KeyboardButton("👨‍💼 Support")],
+            [KeyboardButton("👥 Refer"), KeyboardButton("💰 Wallet")],
+            [KeyboardButton("📁 File Submit")]
+        ],
+        resize_keyboard=True,
+        is_persistent=True
+    )
 
 def is_file_submit_enabled():
     toggle = load_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
@@ -638,23 +634,34 @@ async def debug_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg[:4000])
 
 async def file_submit_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Toggle File Submit on/off - /file_on /file_off /filesubmit"""
+    """Toggle File Submit on/off - /file_on /file_off /filesubmit - button stays but function disabled"""
     if update.effective_user.id != ADMIN_ID:
         return
+    # Check command name
+    cmd_name = update.message.text.lower()
+    if "file_off" in cmd_name:
+        save_json(SUBMIT_TOGGLE_FILE, {"enabled": False})
+        await update.message.reply_text("❌ File Submit DISABLED\n📁 Button will stay but won't work - users see 'disabled' message")
+        return
+    elif "file_on" in cmd_name:
+        save_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
+        await update.message.reply_text("✅ File Submit ENABLED\n📁 Button works now")
+        return
+    
     args = context.args
     if not args:
         status = is_file_submit_enabled()
-        txt = f"📁 File Submit Status: {'🟢 ON' if status else '🔴 OFF'}\n\nCommands:\n/file_on - Enable File Submit\n/file_off - Disable File Submit\n/file_status - Check status\n/submissions - View all submissions"
+        txt = f"📁 File Submit Status: {'🟢 ON' if status else '🔴 OFF'}\n\nButton always visible, only function toggles\n\nCommands:\n/file_on - Enable function\n/file_off - Disable function (button stays)\n/file_status - Check status\n/export_submissions - Get text file"
         await update.message.reply_text(txt)
         return
     
     cmd = args[0].lower() if args else ""
     if cmd in ["on", "enable", "1"]:
         save_json(SUBMIT_TOGGLE_FILE, {"enabled": True})
-        await update.message.reply_text("✅ File Submit ENABLED\nUsers will see 📁 File Submit button")
+        await update.message.reply_text("✅ File Submit ENABLED - button works")
     elif cmd in ["off", "disable", "0"]:
         save_json(SUBMIT_TOGGLE_FILE, {"enabled": False})
-        await update.message.reply_text("❌ File Submit DISABLED\nButton hidden from users")
+        await update.message.reply_text("❌ File Submit DISABLED - button stays but won't work")
     else:
         status = is_file_submit_enabled()
         await update.message.reply_text(f"📁 File Submit: {'ON' if status else 'OFF'}\nUse: /file_on or /file_off")
@@ -695,31 +702,16 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("No submissions")
         return
     
-    # Create sheet text
-    sheet_text = "Serial, User ID, Username, Time, Type, Content\n"
-    for idx, sub in enumerate(submissions, 1):
-        content = sub.get('content','').replace(',', ';').replace('\n', ' ')[:200]
-        sheet_text += f"{idx}, {sub.get('user_id')}, {sub.get('username','')}, {sub.get('time','')}, {sub.get('type','')}, {content}\n"
-    
-    # Save to file
-    sheet_path = os.path.join(BASE_DIR, "submissions_sheet.csv")
-    with open(sheet_path, 'w', encoding='utf-8') as f:
-        f.write(sheet_text)
-    
-    # Also save txt version
+    # User wants: ONLY text file with just the content user gave, no time detail
+    # When /export_submissions clicked, bot gives one text file
     txt_path = SUBMIT_SHEET_FILE
     with open(txt_path, 'w', encoding='utf-8') as f:
-        for idx, sub in enumerate(submissions, 1):
-            f.write(f"=== {idx} ===\n")
-            f.write(f"User: {sub.get('user_id')} (@{sub.get('username','')})\n")
-            f.write(f"Time: {sub.get('time')}\n")
-            f.write(f"Type: {sub.get('type')}\n")
-            f.write(f"Content: {sub.get('content')}\n")
-            f.write("\n")
+        for sub in submissions:
+            # Only the content user submitted, no time/user detail
+            f.write(f"{sub.get('content','')}\n")
     
-    await update.message.reply_text(f"📊 Exported {len(submissions)} submissions")
+    await update.message.reply_text(f"📊 Exported {len(submissions)} submissions - text file only")
     try:
-        await update.message.reply_document(document=open(sheet_path, 'rb'), filename="submissions_sheet.csv")
         await update.message.reply_document(document=open(txt_path, 'rb'), filename="submitted_data.txt")
     except Exception as e:
         await update.message.reply_text(f"Export error: {e}")
@@ -863,10 +855,10 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("Menu:", reply_markup=main_menu_keyboard())
             return
 
-    # File Submit feature
+    # File Submit feature - button always visible, but function toggles
     if "File Submit" in text or "📁 File Submit" in text:
         if not is_file_submit_enabled():
-            await update.message.reply_text("❌ File Submit is currently disabled")
+            await update.message.reply_text("❌ File Submit is currently disabled by admin\n📁 Button stays but function is off", reply_markup=bottom_keyboard())
             return
         # Set user in file submit mode
         context.user_data["awaiting_file_submit"] = True
@@ -881,9 +873,9 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if any(k in text for k in ["Get Number", "Status", "Active Number", "Support", "Refer", "Wallet"]):
             context.user_data["awaiting_file_submit"] = False
         else:
-            # User submitted text content
+            # User submitted text content - save ONLY content for export (no time detail in exported file)
             if len(text) > 2 and "File Submit" not in text:
-                # Save submission
+                # Save submission - keep internal tracking but export only content
                 submissions = load_json(SUBMIT_FILE, [])
                 submission = {
                     "serial": len(submissions) + 1,
@@ -891,28 +883,23 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                     "username": update.effective_user.username or update.effective_user.first_name or "N/A",
                     "time": datetime.now().isoformat(),
                     "type": "text",
-                    "content": text[:1000]  # Limit to 1000 chars
+                    "content": text  # Full content, no limit for user's file
                 }
                 submissions.append(submission)
                 save_json(SUBMIT_FILE, submissions)
                 
-                # Also append to sheet txt
+                # Append to sheet - ONLY content, no time/user detail (as per user request)
                 try:
                     with open(SUBMIT_SHEET_FILE, 'a', encoding='utf-8') as f:
-                        f.write(f"=== {submission['serial']} ===\n")
-                        f.write(f"User: {submission['user_id']} (@{submission['username']})\n")
-                        f.write(f"Time: {submission['time']}\n")
-                        f.write(f"Type: text\n")
-                        f.write(f"Content: {text}\n")
-                        f.write("\n")
+                        f.write(f"{text}\n")
                 except: pass
                 
                 context.user_data["awaiting_file_submit"] = False
-                await update.message.reply_text(f"✅ File submitted successfully!\n\n📊 Serial: {submission['serial']}\n📄 Type: Text\n📝 Content saved to sheet\n\nThank you!", reply_markup=bottom_keyboard())
+                await update.message.reply_text(f"✅ File submitted!\n\nThank you! Your file saved.", reply_markup=bottom_keyboard())
                 
-                # Notify admin
+                # Notify admin (internal, not in exported file)
                 try:
-                    await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New File Submit #{submission['serial']}\n👤 User: {uid} (@{submission['username']})\n📄 Type: Text\n📝 {text[:200]}")
+                    await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid}")
                 except: pass
                 
                 return
