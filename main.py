@@ -562,12 +562,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f.write(f"{content_text}\n")
             except: pass
             
+            # Count lines in file
+            file_lines = [l.strip() for l in content_text.split('\n') if l.strip()]
+            file_line_count = len(file_lines)
+            
             context.user_data["awaiting_file_submit"] = False
-            await update.message.reply_text(f"✅ File submitted! Thank you!", reply_markup=bottom_keyboard())
+            await update.message.reply_text(f"✅ File submitted!\n\n📊 {file_line_count} lines saved from {doc.file_name}\nXLS e {file_line_count} ta row asbe", reply_markup=bottom_keyboard())
             
             # Notify admin
             try:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid} - {doc.file_name}")
+                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid} - {doc.file_name} ({file_line_count} lines)")
             except: pass
             
         except Exception as e:
@@ -747,28 +751,40 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not content:
             continue
         import re
-        # Parse: UID  PASS  COOKIES - 3 columns
-        # Example: "61593326023038  Polas@22  datr=CmSI...; sb=..."
-        parts = re.split(r'\s{2,}|\t', content)
-        if len(parts) >= 3:
-            uid = parts[0].strip()
-            pwd = parts[1].strip()
-            cookies = " ".join(parts[2:]).strip()
-        else:
-            tokens = content.split()
-            if len(tokens) >= 3:
-                uid = tokens[0]
-                pwd = tokens[1]
-                cookies = " ".join(tokens[2:])
-            elif len(tokens) == 2:
-                uid = tokens[0]
-                pwd = tokens[1]
-                cookies = ""
+        # FIX: User may send many lines in one submission - split by newline and handle each line
+        # Example: 
+        # 61593326023038  Polas@22  datr=...
+        # 61593326023039  Polas@23  datr=...
+        # So split content into lines first
+        lines = content.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 5:
+                continue
+            # Parse: UID  PASS  COOKIES - 3 columns
+            parts = re.split(r'\s{2,}|\t', line)
+            if len(parts) >= 3:
+                uid = parts[0].strip()
+                pwd = parts[1].strip()
+                cookies = " ".join(parts[2:]).strip()
             else:
-                uid = content
-                pwd = ""
-                cookies = ""
-        rows.append([uid, pwd, cookies])
+                tokens = line.split()
+                if len(tokens) >= 3:
+                    uid = tokens[0]
+                    pwd = tokens[1]
+                    cookies = " ".join(tokens[2:])
+                elif len(tokens) == 2:
+                    uid = tokens[0]
+                    pwd = tokens[1]
+                    cookies = ""
+                else:
+                    # If can't parse, treat whole line as UID
+                    uid = line
+                    pwd = ""
+                    cookies = ""
+            # Only add if UID looks valid (numeric, 10+ digits)
+            if uid and len(uid) >= 5:
+                rows.append([uid, pwd, cookies])
     
     # Create XLS file
     try:
@@ -996,8 +1012,12 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if any(k in text for k in ["Get Number", "Status", "Active Number", "Support", "Refer", "Wallet"]):
             context.user_data["awaiting_file_submit"] = False
         else:
-            # User submitted text content - save ONLY content for export (no time detail in exported file)
+            # User submitted text content - FIX: Handle multi-line (many UID PASS COOKIES)
             if len(text) > 2 and "File Submit" not in text:
+                # Count lines for feedback
+                lines = [l.strip() for l in text.split('\n') if l.strip()]
+                line_count = len(lines)
+                
                 # Save submission - keep internal tracking but export only content
                 submissions = load_json(SUBMIT_FILE, [])
                 submission = {
@@ -1006,47 +1026,21 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                     "username": update.effective_user.username or update.effective_user.first_name or "N/A",
                     "time": datetime.now().isoformat(),
                     "type": "text",
-                    "content": text  # Full content, no limit for user's file
+                    "content": text  # Full content with all lines
                 }
                 submissions.append(submission)
                 save_json(SUBMIT_FILE, submissions)
                 
-                # Append to sheet - ONLY content, no time/user detail (as per user request)
+                # Append to sheet
                 try:
                     with open(SUBMIT_SHEET_FILE, 'a', encoding='utf-8') as f:
                         f.write(f"{text}\n")
                 except: pass
                 
                 context.user_data["awaiting_file_submit"] = False
-                await update.message.reply_text(f"✅ File submitted!\n\nThank you! Your file saved.\n📋 Format: UID | PASS | COOKIES -> Google Sheet A,B,C", reply_markup=bottom_keyboard())
+                await update.message.reply_text(f"✅ File submitted!\n\n📊 {line_count} lines saved\nThank you! XLS e sob {line_count} ta row asbe", reply_markup=bottom_keyboard())
                 
-                # Parse UID PASS COOKIES and push to Google Sheet
-                try:
-                    import re
-                    # Content is like "61593326023038  Polas@22  datr=...; sb=..."
-                    parts = re.split(r'\s{2,}|\t', text)
-                    if len(parts) >= 3:
-                        uid_val = parts[0].strip()
-                        pwd_val = parts[1].strip()
-                        cookies_val = " ".join(parts[2:]).strip()
-                    else:
-                        tokens = text.split()
-                        if len(tokens) >= 3:
-                            uid_val = tokens[0]
-                            pwd_val = tokens[1]
-                            cookies_val = " ".join(tokens[2:])
-                        else:
-                            uid_val = ""
-                            pwd_val = ""
-                            cookies_val = ""
-                    
-                    if uid_val and cookies_val:
-                        pushed = push_to_google_sheet(uid_val, pwd_val, cookies_val)
-                        if pushed:
-                            await update.message.reply_text("✅ Also pushed to Google Sheet!")
-                except: pass
-                
-                # Notify admin (internal, not in exported file)
+                # Notify admin
                 try:
                     await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid}")
                 except: pass
