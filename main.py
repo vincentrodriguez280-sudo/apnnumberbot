@@ -1340,8 +1340,36 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${balance:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
+            # Save withdraw info before resetting
+            withdraw_amount = balance
+            username = q.from_user.username or q.from_user.first_name or "N/A"
+            
+            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${withdraw_amount:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
+            
+            # NOTIFY ADMIN - Withdraw notification
+            try:
+                admin_msg = f"💸 NEW WITHDRAW REQUEST!\n\n👤 User: {uid}\n📛 Name: {username}\n💰 Amount: ${withdraw_amount:.4f}\n💳 Method: {method}\n✉️ Address:\n{address}\n\n⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_msg)
+                
+                # Also save to withdraw history file
+                withdraw_file = os.path.join(BASE_DIR, "withdraws.json")
+                withdraws = load_json(withdraw_file, [])
+                withdraws.append({
+                    "user_id": str(uid),
+                    "username": username,
+                    "amount": withdraw_amount,
+                    "method": method,
+                    "address": address,
+                    "time": datetime.now().isoformat(),
+                    "status": "pending"
+                })
+                save_json(withdraw_file, withdraws)
+                
+                print(f"[WITHDRAW] User {uid} ({username}) requested ${withdraw_amount:.4f} to {method}: {address}")
+            except Exception as e:
+                print(f"[WITHDRAW NOTIFY ERR] {e}")
+            
             user["balance"]=0.0
             save_user(uid, user)
         return
@@ -1509,8 +1537,26 @@ app.add_handler(CommandHandler("list", list_range))
 app.add_handler(CommandHandler("off", bot_off))
 app.add_handler(CommandHandler("on", bot_on))
 app.add_handler(CommandHandler("botstatus", bot_status))
+async def view_withdraws(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    withdraw_file = os.path.join(BASE_DIR, "withdraws.json")
+    withdraws = load_json(withdraw_file, [])
+    if not withdraws:
+        await update.message.reply_text("💸 No withdraw requests yet")
+        return
+    txt = f"💸 Total Withdraws: {len(withdraws)}\n\nLast 10:\n\n"
+    for w in withdraws[-10:]:
+        txt += f"👤 {w.get('user_id')} ({w.get('username','N/A')})\n"
+        txt += f"💰 ${w.get('amount',0):.4f} | {w.get('method')}\n"
+        txt += f"✉️ {w.get('address','')[:30]}...\n"
+        txt += f"⏰ {w.get('time','')[:16]} | {w.get('status','pending')}\n\n"
+    await update.message.reply_text(txt[:4000])
+
 app.add_handler(CommandHandler("backup", backup_data))
 app.add_handler(CommandHandler("data", restore_info))
+app.add_handler(CommandHandler("withdraws", view_withdraws))
+app.add_handler(CommandHandler("withdraw", view_withdraws))
 app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 app.add_handler(CallbackQueryHandler(handle))
