@@ -6,11 +6,8 @@ import random
 import re
 from bs4 import BeautifulSoup
 
-# ========== SIMPLE PANEL - GITHUB FILE + PANEL OTP ==========
-# Flow:
-# 1. Number github file e rakho (numbers_151.txt)
-# 2. Member click korle 8 ta number oi file theke jabe
-# 3. OTP panel theke watcher diye user + OTP group e jabe
+# ========== SIMPLE PANEL - GITHUB FILE + PANEL OTP (jog biyog captcha) ==========
+# Flow: Github file (numbers_151.txt / numbers_nepal.txt) -> 8 numbers -> Panel OTP -> inbox+group
 
 NEW_PANEL_URL = "http://151.80.19.204"
 NEW_PANEL_LOGIN = f"{NEW_PANEL_URL}/ints/login"
@@ -22,7 +19,7 @@ _session_151 = None
 _orders_store = {}
 
 def solve_math_captcha(text, soup=None):
-    """Jog biyog captcha solve"""
+    """Jog biyog captcha solve: 5+3=?, 10-2=?"""
     try:
         m = re.search(r'(\d+)\s*([\+\-])\s*(\d+)', text)
         if m:
@@ -42,7 +39,6 @@ def solve_math_captcha(text, soup=None):
         return None
 
 def get_session_151():
-    """Login to panel with captcha"""
     global _session_151
     try:
         if _session_151:
@@ -69,7 +65,6 @@ def get_session_151():
         captcha_ans = solve_math_captcha(login_page.text, soup)
         print(f"[151 LOGIN] Captcha ans: {captcha_ans}")
         
-        # Login variants
         user_fields = ['username', 'email', 'user', 'login']
         pass_fields = ['password', 'pass']
         captcha_fields = ['captcha', 'answer', 'result', 'captcha_result', 'security_code']
@@ -106,14 +101,12 @@ def get_session_151():
         return None
 
 def get_otp_from_panel(order_id):
-    """OTP panel theke anbe - watcher user + OTP group e pathabe"""
+    """OTP panel theke - watcher user + group e pathabe"""
     try:
         session = get_session_151()
         if not session:
-            print("[OTP] No session")
             return None
         
-        # Try inbox/sms pages
         endpoints = [
             f"{NEW_PANEL_URL}/ints/",
             f"{NEW_PANEL_URL}/ints/sms",
@@ -127,56 +120,26 @@ def get_otp_from_panel(order_id):
                 if resp.status_code != 200:
                     continue
                 
-                # Find OTP 4-8 digit near keywords
-                # Look for all 4-8 digit codes
                 text = resp.text
-                
-                # Try to find OTP patterns
-                # Common: "123456 is your code", "OTP: 1234"
                 otps = re.findall(r'\b\d{4,8}\b', text)
                 for otp in otps:
                     if 4 <= len(otp) <= 8:
                         pos = text.find(otp)
                         ctx = text[max(0, pos-100):pos+100].lower()
-                        # Check if near OTP keywords
-                        if any(k in ctx for k in ['code', 'otp', 'facebook', 'fb', 'verification', 'whatsapp', 'tiktok', 'your code']):
-                            print(f"[OTP FOUND] {otp} from {endpoint}")
+                        if any(k in ctx for k in ['code', 'otp', 'facebook', 'fb', 'verification']):
+                            print(f"[OTP FOUND] {otp}")
                             return otp
-                
-                # Also check JSON or specific elements
-                try:
-                    soup = BeautifulSoup(text, 'html.parser')
-                    # Look for table rows with OTP
-                    for row in soup.find_all('tr'):
-                        row_text = row.get_text()
-                        if any(c.isdigit() for c in row_text):
-                            m = re.search(r'\b\d{4,8}\b', row_text)
-                            if m:
-                                otp = m.group(0)
-                                if 4 <= len(otp) <= 8:
-                                    print(f"[OTP FOUND TABLE] {otp}")
-                                    return otp
-                except:
-                    pass
-                    
-            except Exception as e:
-                print(f"[OTP ENDPOINT {endpoint} ERR] {e}")
+            except:
                 continue
-        
         return None
     except Exception as e:
         print(f"[OTP ERR] {e}")
-        import traceback
-        traceback.print_exc()
         return None
 
-# ========== FILE BASED NUMBERS - GITHUB FILE ==========
+# ========== GITHUB FILE NUMBERS - WITH FALLBACK ==========
 
 def get_numbers_file_path(country_code):
-    """Github file er path - /data e sync hoy"""
     base = "/data" if os.path.exists("/data") else "."
-    
-    # Map country to file - tumi github e je file rakba
     file_map = {
         "MOZAMBIQUE": "numbers_mozambique.txt",
         "MOZAMBIQUE_TT": "numbers_mozambique.txt",
@@ -187,38 +150,44 @@ def get_numbers_file_path(country_code):
         "CAMEROON": "numbers_cameroon.txt",
         "USA": "numbers_usa.txt",
         "BD": "numbers_bd.txt",
-        # Common file for 151 panel
-        "151": "numbers_151.txt",
-        "OTHER": "numbers_151.txt",
+        "CAMBODIA": "numbers_cambodia.txt",
     }
-    
     fname = file_map.get(country_code.upper(), "numbers_151.txt")
     
-    # Try country specific first, then fallback to numbers_151.txt
-    fpath = os.path.join(base, fname)
-    if os.path.exists(fpath):
-        return fpath
+    candidates = []
+    candidates.append(os.path.join(base, fname))
+    candidates.append(os.path.join(base, "numbers_151.txt"))
+    candidates.append(os.path.join(base, "numbers_nepal.txt"))
+    candidates.append(os.path.join(base, "numbers.txt"))
+    candidates.append(fname)
+    candidates.append("numbers_151.txt")
+    candidates.append("numbers.txt")
     
-    # Fallback to numbers_151.txt (main github file)
-    fallback = os.path.join(base, "numbers_151.txt")
-    if os.path.exists(fallback):
-        return fallback
+    for fpath in candidates:
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, 'r') as file:
+                    lines = [l.strip() for l in file.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                if len(lines) > 0:
+                    print(f"[FILE PATH] Found {len(lines)} numbers in {fpath} for {country_code}")
+                    return fpath
+                else:
+                    print(f"[FILE PATH] {fpath} empty, trying next")
+            except:
+                continue
     
-    # Fallback to numbers.txt
-    fallback2 = os.path.join(base, "numbers.txt")
-    if os.path.exists(fallback2):
-        return fallback2
+    for fpath in candidates:
+        if os.path.exists(fpath):
+            return fpath
     
-    return fpath
+    return os.path.join(base, fname)
 
 def create_order_from_file(service, country_code):
-    """Github file theke 1 number debe - main.py 8 bar call korbe = 8 number"""
     try:
         fpath = get_numbers_file_path(country_code)
         print(f"[FILE] Trying {fpath} for {country_code}")
         
         if not os.path.exists(fpath):
-            # Try numbers_151.txt
             base = "/data" if os.path.exists("/data") else "."
             alt = os.path.join(base, "numbers_151.txt")
             if os.path.exists(alt):
@@ -234,11 +203,9 @@ def create_order_from_file(service, country_code):
             print(f"[FILE] Empty: {fpath}")
             return None
         
-        # Get first number
         number = lines[0]
         remaining = lines[1:]
         
-        # Remove from file so not reused
         with open(fpath, 'w') as fw:
             for ln in remaining:
                 fw.write(ln + "\n")
@@ -250,69 +217,47 @@ def create_order_from_file(service, country_code):
             "country": country_code,
             "service": service,
             "panel": "151_file",
-            "file": fpath
         }
-        
-        print(f"[FILE ORDER] {country_code} -> {number} from {os.path.basename(fpath)} | Remaining: {len(remaining)}")
+        print(f"[FILE ORDER] {country_code} -> {number} | Remaining: {len(remaining)}")
         return result
-        
     except Exception as e:
         print(f"[FILE ORDER ERR] {e}")
         import traceback
         traceback.print_exc()
         return None
 
-# ========== MAIN BOT FUNCTIONS ==========
-
 def get_all_countries(service):
-    """Available countries"""
-    return ["NEPAL_FB", "MOZAMBIQUE", "MYANMAR", "CAMEROON", "USA", "BD", "NEPAL", "MOZAMBIQUE_TT", "MYANMAR_TT"]
+    return ["NEPAL_FB", "MOZAMBIQUE", "MYANMAR", "CAMEROON", "USA", "BD", "NEPAL", "MOZAMBIQUE_TT", "MYANMAR_TT", "CAMBODIA"]
 
 def get_display_name(country_code):
     names = {
         "NEPAL": "Nepal",
         "NEPAL_FB": "Nepal",
         "MOZAMBIQUE": "Mozambique",
-        "MOZAMBIQUE_TT": "Mozambique",
         "MYANMAR": "Myanmar",
-        "MYANMAR_TT": "Myanmar",
         "CAMEROON": "Cameroon",
         "USA": "USA",
         "BD": "Bangladesh",
+        "CAMBODIA": "Cambodia",
     }
     return names.get(country_code.upper(), country_code.replace("_", " ").title())
 
 def create_order(service, country_code):
-    """
-    SIMPLE FLOW:
-    1. Github file (numbers_151.txt) theke number nibe
-    2. 1 number per call - main.py 8 bar call korbe = 8 number member pabe
-    """
     print(f"[CREATE ORDER] {service} {country_code}")
-    
     result = create_order_from_file(service, country_code)
     if result:
         _orders_store[result["id"]] = result
         return result
-    
     print(f"[CREATE ORDER] No number for {country_code}")
     return None
 
 def get_otp(order_id):
-    """
-    SIMPLE FLOW:
-    1. Panel theke OTP anbe (jog biyog captcha solve kore login)
-    2. main.py er otp_watcher auto user inbox + @APNOTP group e pathabe
-    """
-    print(f"[GET OTP] For order {order_id}")
-    
+    print(f"[GET OTP] {order_id}")
     otp = get_otp_from_panel(order_id)
     if otp:
-        print(f"[GET OTP] Found OTP: {otp}")
+        print(f"[GET OTP] Found: {otp}")
         return otp
-    
     return None
 
-print("[PANEL] SIMPLE MODE LOADED")
-print("[PANEL] Flow: Github file (numbers_151.txt) -> 8 numbers to member -> Panel OTP -> inbox + OTP group")
+print("[PANEL] SIMPLE MODE - Github file -> 8 numbers -> Panel OTP -> inbox+group")
 print(f"[PANEL] User: {PANEL_151_USER[:3]}... | Pass set: {bool(PANEL_151_PASS)}")
