@@ -60,7 +60,7 @@ def sync_number_files():
     Only copy if file doesn't exist at all
     """
     try:
-        files_to_sync = ["numbers.txt", "numbers_mozambique.txt", "numbers_myanmar.txt", "numbers_nepal.txt"]
+        files_to_sync = ["numbers.txt", "numbers_mozambique.txt", "numbers_myanmar.txt", "numbers_nepal.txt", "numbers_151.txt", "numbers_cameroon.txt", "numbers_usa.txt", "numbers_bd.txt", "numbers_mozambique_tt.txt", "numbers_myanmar_tt.txt"]
         for fname in files_to_sync:
             src_candidates = [f"./{fname}", f"{fname}", os.path.join(".", fname), f"/app/{fname}"]
             dst = os.path.join(BASE_DIR, fname)
@@ -82,33 +82,24 @@ def sync_number_files():
                                 print(f"[SYNC COPY ERR] {e}")
                                 pass
                 else:
-                    # File exists in /data - check if it has numbers or only comments
-                    # If only comments (0 numbers) and src has numbers, AND dst was never used (size small), copy
-                    # But if dst was used and became empty, DON'T copy to avoid duplicate
+                    # If /data file empty, refresh from github
                     try:
-                        if os.path.getsize(dst) < 200:  # Small file, likely empty/template
-                            with open(dst,'r') as f:
-                                dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
-                            if len(dst_numbers) == 0:
-                                # Check if this is first time (template) vs used up
-                                # If dst is template (contains # Example), allow copy from src with real numbers
-                                with open(dst,'r') as f:
-                                    dst_content = f.read()
-                                if "# Example" in dst_content or "ADD YOUR" in dst_content:
-                                    for src in src_candidates:
-                                        if os.path.exists(src):
-                                            with open(src,'r') as sf:
-                                                src_content = sf.read()
-                                                src_numbers = [l.strip() for l in src_content.split("\n") if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
-                                            # Only copy if src has REAL numbers (not just example)
-                                            # Real numbers don't have # and have correct prefix
-                                            real_src_numbers = [n for n in src_numbers if not n.startswith("#") and (n.startswith("258") or n.startswith("95") or n.startswith("977"))]
-                                            if len(real_src_numbers) > 0 and len(real_src_numbers) > len(dst_numbers):
-                                                # Check if src is not template
-                                                if src_content.count("Example") < 2:
-                                                    shutil.copy(src, dst)
-                                                    print(f"[SYNC] Initial copy {src} -> {dst} ({len(real_src_numbers)} real numbers)")
-                                                    break
+                        with open(dst,'r') as f:
+                            dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                        if len(dst_numbers) == 0:
+                            # /data empty, try github
+                            for src in src_candidates:
+                                if os.path.exists(src):
+                                    try:
+                                        with open(src,'r') as sf:
+                                            src_content = sf.read()
+                                            src_numbers = [l.strip() for l in src_content.split("\n") if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                                        if len(src_numbers) > 0:
+                                            shutil.copy(src, dst)
+                                            print(f"[SYNC] Refreshed {src} -> {dst} ({len(src_numbers)} numbers) - was empty")
+                                            break
+                                    except:
+                                        continue
                     except: pass
     except Exception as e:
         print(f"[SYNC ERR] {e}")
@@ -485,7 +476,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_path = os.path.join(submit_dir, f"{uid}_{int(datetime.now().timestamp())}_{doc.file_name}")
             await file.download_to_drive(file_path)
             
-            # Read content - FIXED: Use openpyxl only (no pandas) to avoid build fail
+            # Read content - expect UID PASS COOKIES format
             content_text = ""
             try:
                 if fname.endswith('.txt') or fname.endswith('.csv'):
@@ -493,69 +484,27 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         content_text = f.read()
                 elif fname.endswith('.xls') or fname.endswith('.xlsx'):
                     try:
-                        import openpyxl
-                        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-                        ws = wb.active
-                        lines = []
-                        for row in ws.iter_rows(values_only=True):
-                            if not row or all(v is None or str(v).strip() == "" for v in row):
-                                continue
-                            row_vals = [str(v).strip() if v is not None else "" for v in row]
-                            while row_vals and row_vals[-1] == "":
-                                row_vals.pop()
-                            if not row_vals:
-                                continue
-                            if len(row_vals) >= 3:
-                                uid_val = row_vals[0]
-                                pwd_val = row_vals[1]
-                                cookies_val = " ".join(row_vals[2:])
-                                if " " in uid_val and not pwd_val:
-                                    parts = uid_val.split()
-                                    if len(parts) >= 2:
-                                        uid_val = parts[0]
-                                        pwd_val = parts[1]
-                                        if len(parts) > 2:
-                                            cookies_val = " ".join(parts[2:]) + " " + cookies_val
-                                lines.append(f"{uid_val}  {pwd_val}  {cookies_val}")
-                            elif len(row_vals) == 2:
-                                first = row_vals[0]
-                                second = row_vals[1]
-                                if " " in first:
-                                    parts = first.split()
-                                    if len(parts) >= 2:
-                                        uid_val = parts[0]
-                                        pwd_val = parts[1]
-                                        cookies_val = " ".join(parts[2:]) + " " + second if len(parts) > 2 else second
-                                    else:
-                                        uid_val = first
-                                        pwd_val = ""
-                                        cookies_val = second
-                                else:
-                                    uid_val = first
-                                    pwd_val = ""
-                                    cookies_val = second
-                                lines.append(f"{uid_val}  {pwd_val}  {cookies_val}")
-                            elif len(row_vals) == 1:
-                                lines.append(row_vals[0])
-                        wb.close()
-                        content_text = "\n".join(lines)
-                        print(f"[XLSX READ] Got {len(lines)} lines from {doc.file_name}")
-                    except Exception as e:
-                        print(f"[XLSX ERR] {e}")
-                        content_text = f"Excel file: {doc.file_name} - READ FAILED: {e}"
+                        import pandas as pd
+                        df = pd.read_excel(file_path)
+                        # If Excel has 3 columns, convert to UID PASS COOKIES lines
+                        if len(df.columns) >= 3:
+                            lines = []
+                            for _, row in df.iterrows():
+                                uid = str(row.iloc[0])
+                                pwd = str(row.iloc[1])
+                                cookies = str(row.iloc[2])
+                                lines.append(f"{uid}  {pwd}  {cookies}")
+                                # Push to Google Sheet
+                                push_to_google_sheet(uid, pwd, cookies)
+                            content_text = "\n".join(lines)
+                        else:
+                            content_text = df.to_string()
+                    except:
+                        content_text = f"Excel file: {doc.file_name}"
                 else:
                     content_text = f"File: {doc.file_name}"
-            except Exception as e:
-                print(f"[READ ERR] {e}")
-                content_text = f"File: {doc.file_name} - ERROR: {e}"
-            
-            if not content_text or content_text.startswith("Excel file:") or content_text.startswith("File:"):
-                try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        txt_content = f.read()
-                        if len(txt_content) > 20:
-                            content_text = txt_content
-                except: pass
+            except:
+                content_text = f"File: {doc.file_name}"
             
             if not content_text:
                 content_text = f"File: {doc.file_name}"
@@ -604,16 +553,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f.write(f"{content_text}\n")
             except: pass
             
-            # Count lines in file
-            file_lines = [l.strip() for l in content_text.split('\n') if l.strip()]
-            file_line_count = len(file_lines)
-            
             context.user_data["awaiting_file_submit"] = False
-            await update.message.reply_text(f"✅ File submitted!\n\n📊 {file_line_count} lines saved from {doc.file_name}\nXLS e {file_line_count} ta row asbe", reply_markup=bottom_keyboard())
+            await update.message.reply_text(f"✅ File submitted! Thank you!", reply_markup=bottom_keyboard())
             
             # Notify admin
             try:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid} - {doc.file_name} ({file_line_count} lines)")
+                await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid} - {doc.file_name}")
             except: pass
             
         except Exception as e:
@@ -793,40 +738,28 @@ async def export_submissions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not content:
             continue
         import re
-        # FIX: User may send many lines in one submission - split by newline and handle each line
-        # Example: 
-        # 61593326023038  Polas@22  datr=...
-        # 61593326023039  Polas@23  datr=...
-        # So split content into lines first
-        lines = content.split('\n')
-        for line in lines:
-            line = line.strip()
-            if not line or len(line) < 5:
-                continue
-            # Parse: UID  PASS  COOKIES - 3 columns
-            parts = re.split(r'\s{2,}|\t', line)
-            if len(parts) >= 3:
-                uid = parts[0].strip()
-                pwd = parts[1].strip()
-                cookies = " ".join(parts[2:]).strip()
+        # Parse: UID  PASS  COOKIES - 3 columns
+        # Example: "61593326023038  Polas@22  datr=CmSI...; sb=..."
+        parts = re.split(r'\s{2,}|\t', content)
+        if len(parts) >= 3:
+            uid = parts[0].strip()
+            pwd = parts[1].strip()
+            cookies = " ".join(parts[2:]).strip()
+        else:
+            tokens = content.split()
+            if len(tokens) >= 3:
+                uid = tokens[0]
+                pwd = tokens[1]
+                cookies = " ".join(tokens[2:])
+            elif len(tokens) == 2:
+                uid = tokens[0]
+                pwd = tokens[1]
+                cookies = ""
             else:
-                tokens = line.split()
-                if len(tokens) >= 3:
-                    uid = tokens[0]
-                    pwd = tokens[1]
-                    cookies = " ".join(tokens[2:])
-                elif len(tokens) == 2:
-                    uid = tokens[0]
-                    pwd = tokens[1]
-                    cookies = ""
-                else:
-                    # If can't parse, treat whole line as UID
-                    uid = line
-                    pwd = ""
-                    cookies = ""
-            # Only add if UID looks valid (numeric, 10+ digits)
-            if uid and len(uid) >= 5:
-                rows.append([uid, pwd, cookies])
+                uid = content
+                pwd = ""
+                cookies = ""
+        rows.append([uid, pwd, cookies])
     
     # Create XLS file
     try:
@@ -1054,12 +987,8 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
         if any(k in text for k in ["Get Number", "Status", "Active Number", "Support", "Refer", "Wallet"]):
             context.user_data["awaiting_file_submit"] = False
         else:
-            # User submitted text content - FIX: Handle multi-line (many UID PASS COOKIES)
+            # User submitted text content - save ONLY content for export (no time detail in exported file)
             if len(text) > 2 and "File Submit" not in text:
-                # Count lines for feedback
-                lines = [l.strip() for l in text.split('\n') if l.strip()]
-                line_count = len(lines)
-                
                 # Save submission - keep internal tracking but export only content
                 submissions = load_json(SUBMIT_FILE, [])
                 submission = {
@@ -1068,21 +997,47 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
                     "username": update.effective_user.username or update.effective_user.first_name or "N/A",
                     "time": datetime.now().isoformat(),
                     "type": "text",
-                    "content": text  # Full content with all lines
+                    "content": text  # Full content, no limit for user's file
                 }
                 submissions.append(submission)
                 save_json(SUBMIT_FILE, submissions)
                 
-                # Append to sheet
+                # Append to sheet - ONLY content, no time/user detail (as per user request)
                 try:
                     with open(SUBMIT_SHEET_FILE, 'a', encoding='utf-8') as f:
                         f.write(f"{text}\n")
                 except: pass
                 
                 context.user_data["awaiting_file_submit"] = False
-                await update.message.reply_text(f"✅ File submitted!\n\n📊 {line_count} lines saved\nThank you! XLS e sob {line_count} ta row asbe", reply_markup=bottom_keyboard())
+                await update.message.reply_text(f"✅ File submitted!\n\nThank you! Your file saved.\n📋 Format: UID | PASS | COOKIES -> Google Sheet A,B,C", reply_markup=bottom_keyboard())
                 
-                # Notify admin
+                # Parse UID PASS COOKIES and push to Google Sheet
+                try:
+                    import re
+                    # Content is like "61593326023038  Polas@22  datr=...; sb=..."
+                    parts = re.split(r'\s{2,}|\t', text)
+                    if len(parts) >= 3:
+                        uid_val = parts[0].strip()
+                        pwd_val = parts[1].strip()
+                        cookies_val = " ".join(parts[2:]).strip()
+                    else:
+                        tokens = text.split()
+                        if len(tokens) >= 3:
+                            uid_val = tokens[0]
+                            pwd_val = tokens[1]
+                            cookies_val = " ".join(tokens[2:])
+                        else:
+                            uid_val = ""
+                            pwd_val = ""
+                            cookies_val = ""
+                    
+                    if uid_val and cookies_val:
+                        pushed = push_to_google_sheet(uid_val, pwd_val, cookies_val)
+                        if pushed:
+                            await update.message.reply_text("✅ Also pushed to Google Sheet!")
+                except: pass
+                
+                # Notify admin (internal, not in exported file)
                 try:
                     await context.bot.send_message(chat_id=ADMIN_ID, text=f"📁 New Submit #{submission['serial']} from {uid}")
                 except: pass
@@ -1340,36 +1295,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         else:
-            # Save withdraw info before resetting
-            withdraw_amount = balance
-            username = q.from_user.username or q.from_user.first_name or "N/A"
-            
-            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${withdraw_amount:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
+            txt = f"✅ Withdraw Requested\n\n💰 Amount: ${balance:.4f}\n💳 Method: {method}\n✉️ Address: {masked}\n\n⏳ Will be processed within 24h"
             await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]]))
-            
-            # NOTIFY ADMIN - Withdraw notification
-            try:
-                admin_msg = f"💸 NEW WITHDRAW REQUEST!\n\n👤 User: {uid}\n📛 Name: {username}\n💰 Amount: ${withdraw_amount:.4f}\n💳 Method: {method}\n✉️ Address:\n{address}\n\n⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_msg)
-                
-                # Also save to withdraw history file
-                withdraw_file = os.path.join(BASE_DIR, "withdraws.json")
-                withdraws = load_json(withdraw_file, [])
-                withdraws.append({
-                    "user_id": str(uid),
-                    "username": username,
-                    "amount": withdraw_amount,
-                    "method": method,
-                    "address": address,
-                    "time": datetime.now().isoformat(),
-                    "status": "pending"
-                })
-                save_json(withdraw_file, withdraws)
-                
-                print(f"[WITHDRAW] User {uid} ({username}) requested ${withdraw_amount:.4f} to {method}: {address}")
-            except Exception as e:
-                print(f"[WITHDRAW NOTIFY ERR] {e}")
-            
             user["balance"]=0.0
             save_user(uid, user)
         return
@@ -1433,9 +1360,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     unique_countries.append(c.upper())
                     seen_base.add(base)
-        unique_countries = [c for c in unique_countries if "NEPAL" not in c]
+        # FIX: Always show NEPAL_FB for FACEBOOK
         if service.upper() == "FACEBOOK":
-            unique_countries.insert(0, "NEPAL_FB")
+            if "NEPAL_FB" not in unique_countries:
+                unique_countries.insert(0, "NEPAL_FB")
+            else:
+                # Move to first
+                unique_countries = [c for c in unique_countries if c != "NEPAL_FB"]
+                unique_countries.insert(0, "NEPAL_FB")
+        else:
+            unique_countries = [c for c in unique_countries if "NEPAL" not in c]
         countries_sorted = unique_countries
         platform_name = "Facebook" if service.upper() == "FACEBOOK" else service.title()
         txt = f"💳 {platform_name} - দেশ সিলেক্ট করুন:"
@@ -1458,11 +1392,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         flag = FLAGS.get(country_code.upper(), FLAGS.get(country_code.upper().split("_")[0], "🌍"))
         is_nepal = "NEPAL" in country_code.upper()
         is_tiktok_file = any(x in country_code.upper() for x in ["MOZAMBIQUE", "MYANMAR"])
-        # User wants 5 numbers per click for TikTok
-        if is_tiktok_file:
-            num_count = 5
-        else:
-            num_count = 3 if is_nepal else 6
+        # User wants 8 numbers per click for all (updated from 6)
+        num_count = 8
         await q.edit_message_text(f"⏳ Fetching {num_count} numbers for {display}...")
         nums = []
         # For FB/WS, try harder to get 6 numbers (retry if panel fails)
@@ -1537,26 +1468,8 @@ app.add_handler(CommandHandler("list", list_range))
 app.add_handler(CommandHandler("off", bot_off))
 app.add_handler(CommandHandler("on", bot_on))
 app.add_handler(CommandHandler("botstatus", bot_status))
-async def view_withdraws(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    withdraw_file = os.path.join(BASE_DIR, "withdraws.json")
-    withdraws = load_json(withdraw_file, [])
-    if not withdraws:
-        await update.message.reply_text("💸 No withdraw requests yet")
-        return
-    txt = f"💸 Total Withdraws: {len(withdraws)}\n\nLast 10:\n\n"
-    for w in withdraws[-10:]:
-        txt += f"👤 {w.get('user_id')} ({w.get('username','N/A')})\n"
-        txt += f"💰 ${w.get('amount',0):.4f} | {w.get('method')}\n"
-        txt += f"✉️ {w.get('address','')[:30]}...\n"
-        txt += f"⏰ {w.get('time','')[:16]} | {w.get('status','pending')}\n\n"
-    await update.message.reply_text(txt[:4000])
-
 app.add_handler(CommandHandler("backup", backup_data))
 app.add_handler(CommandHandler("data", restore_info))
-app.add_handler(CommandHandler("withdraws", view_withdraws))
-app.add_handler(CommandHandler("withdraw", view_withdraws))
 app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
 app.add_handler(CallbackQueryHandler(handle))
