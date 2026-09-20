@@ -1,385 +1,523 @@
-import requests, re, json, os, threading, time
+
+import os
+import requests
+import json
+import time
+import random
+import re
 from bs4 import BeautifulSoup
 
-BASE_DIR = "/data" if os.path.exists("/data") else ("/app/data" if os.path.exists("/app/data") else ".")
-try:
-    os.makedirs(BASE_DIR, exist_ok=True)
-except:
-    pass
-RANGES_FILE = os.path.join(BASE_DIR, "ranges.json")
-NUMBERS_FILE = os.path.join(BASE_DIR, "numbers.txt")
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+# ========== 151.80.19.204 PANEL - WITH MATH CAPTCHA (jog biyog) ==========
+# User said: panel login e jog biyog captcha thake
 
-CFG = {}
-for p in ["config.json", CONFIG_FILE]:
-    if os.path.exists(p):
-        try:
-            with open(p,"r") as f: CFG.update(json.load(f))
-        except: pass
+NEW_PANEL_URL = "http://151.80.19.204"
+NEW_PANEL_LOGIN = f"{NEW_PANEL_URL}/ints/login"
 
-PANELS = {
-    "voltx": {
-        "key": "M5UMMJFPS49",
-        "allocate": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/getnum",
-        "otp": "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api/success-otp",
-    },
-    "client": {
-        "url": CFG.get("PANEL_URL", "http://139.99.68.231/ints/client/SMSCDRStats"),
-        "login_url": CFG.get("LOGIN_URL", "http://139.99.68.231/ints/client/login"),
-        "user": CFG.get("PANEL_USER", "Polaszone"),
-        "pass": CFG.get("PANEL_PASS", "Polaszone"),
-    },
-    "had": {
-        "url": "http://147.135.212.197/crapi/had/viewstats",
-        "key": "QlFYRUpBUzRgY5Vrh2xifH6JmYmBmIVEfnZ1iEZtlVV1gWZaQ3-LYA==",
-    },
-    "ivasms": {
-        "email": os.getenv("IVASMS_EMAIL", CFG.get("IVASMS_EMAIL", "ariyan548496@gmail.com")),
-        "password": os.getenv("IVASMS_PASSWORD", CFG.get("IVASMS_PASSWORD", "")),
-        "login_url": "https://www.ivasms.com/login",
-        "live_url": "https://www.ivasms.com/portal/live/my_sms",
-    }
+PANEL_151_USER = os.getenv("PANEL_151_USER", "")
+PANEL_151_PASS = os.getenv("PANEL_151_PASS", "")
+
+_session_151 = None
+_numbers_cache_151 = {
+    "numbers": [],
+    "last_fetch": 0,
 }
 
-session = requests.Session()
-_logged_in = False
-file_lock = threading.Lock()
-
-_ivasms_session = requests.Session()
-_ivasms_logged_in = False
-_ivasms_cache = {"time": 0, "data": [], "lock": threading.Lock()}
-_ivasms_last_fetch = {"time": 0}
-
-def ivasms_login():
-    global _ivasms_logged_in, _ivasms_session
+def solve_math_captcha(text, soup=None):
+    """Solve jog biyog captcha like 2+3, 5-2, etc"""
     try:
-        if _ivasms_logged_in:
-            return True
-        email = PANELS["ivasms"]["email"]
-        password = PANELS["ivasms"]["password"]
-        if not password:
-            print("[IVASMS] No password set in env IVASMS_PASSWORD")
-            return False
-        r = _ivasms_session.get(PANELS["ivasms"]["login_url"], timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        csrf = None
-        csrf_input = soup.find("input", {"name": "_token"}) or soup.find("input", {"name": "csrf_token"})
-        if csrf_input:
-            csrf = csrf_input.get("value")
-        data = {"email": email, "password": password}
-        if csrf:
-            data["_token"] = csrf
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": PANELS["ivasms"]["login_url"]}
-        r2 = _ivasms_session.post(PANELS["ivasms"]["login_url"], data=data, headers=headers, timeout=20)
-        if "portal" in r2.url or "dashboard" in r2.text.lower() or "logout" in r2.text.lower():
-            _ivasms_logged_in = True
-            print(f"[IVASMS LOGIN] Success for {email}")
-            return True
-        if r2.status_code == 200 and len(r2.text) > 5000:
-            _ivasms_logged_in = True
-            return True
-        print(f"[IVASMS LOGIN FAIL] {r2.status_code}")
-        return False
+        print(f"[CAPTCHA] Trying to solve from text: {text[:1000]}")
+        
+        # Common patterns for math captcha
+        patterns = [
+            r'(\d+)\s*\+\s*(\d+)\s*=\s*\?',
+            r'(\d+)\s*\-\s*(\d+)\s*=\s*\?',
+            r'(\d+)\s*\+\s*(\d+)',
+            r'(\d+)\s*\-\s*(\d+)',
+            r'(\d+)\s*\*\s*(\d+)',
+            r'(\d+)\s*x\s*(\d+)',
+            r'What is (\d+)\s*\+\s*(\d+)',
+            r'What is (\d+)\s*\-\s*(\d+)',
+            r'(\d+)\s*plus\s*(\d+)',
+            r'(\d+)\s*minus\s*(\d+)',
+            r'যোগ\s*(\d+)\s*\+\s*(\d+)',  # Bengali
+            r'বিয়োগ\s*(\d+)\s*\-\s*(\d+)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                try:
+                    if isinstance(match, tuple) and len(match) >= 2:
+                        a, b = int(match[0]), int(match[1])
+                        # Determine operation from pattern
+                        if '+' in pattern or 'plus' in pattern.lower() or 'যোগ' in pattern:
+                            result = a + b
+                            print(f"[CAPTCHA SOLVED] {a} + {b} = {result}")
+                            return result
+                        elif '-' in pattern or 'minus' in pattern.lower() or 'বিয়োগ' in pattern:
+                            result = a - b
+                            print(f"[CAPTCHA SOLVED] {a} - {b} = {result}")
+                            return result
+                        elif '*' in pattern or 'x' in pattern.lower():
+                            result = a * b
+                            print(f"[CAPTCHA SOLVED] {a} * {b} = {result}")
+                            return result
+                        else:
+                            # Try to detect from text around match
+                            # Look for + or - between numbers in original text
+                            full_match = f"{match[0]} + {match[1]}" if '+' in text else f"{match[0]} - {match[1]}"
+                            if '+' in text[ max(0, text.find(match[0])-5) : text.find(match[1])+5 ]:
+                                result = a + b
+                                print(f"[CAPTCHA SOLVED] {a} + {b} = {result}")
+                                return result
+                            else:
+                                result = a - b if a >= b else a + b
+                                print(f"[CAPTCHA SOLVED] {a} +/- {b} = {result}")
+                                return result
+                except Exception as e:
+                    print(f"[CAPTCHA MATCH ERR] {e}")
+                    continue
+        
+        # Try to find captcha in soup
+        if soup:
+            # Look for elements that might contain captcha
+            captcha_elements = soup.find_all(text=re.compile(r'\d+\s*[\+\-\*]\s*\d+'))
+            for elem in captcha_elements:
+                print(f"[CAPTCHA ELEM] {elem}")
+                for pattern in patterns:
+                    m = re.search(pattern, str(elem))
+                    if m:
+                        try:
+                            a, b = int(m.group(1)), int(m.group(2))
+                            if '+' in m.group(0):
+                                result = a + b
+                            elif '-' in m.group(0):
+                                result = a - b
+                            else:
+                                result = a + b
+                            print(f"[CAPTCHA SOLVED from elem] {a} {'+' if '+' in m.group(0) else '-'} {b} = {result}")
+                            return result
+                        except:
+                            continue
+            
+            # Look for input near captcha text
+            # Common: captcha image or text near input
+            inputs = soup.find_all('input')
+            for inp in inputs:
+                # Check placeholder or nearby text
+                placeholder = inp.get('placeholder', '').lower()
+                if 'captcha' in placeholder or 'result' in placeholder or 'answer' in placeholder:
+                    # Find nearby text with math
+                    parent = inp.parent
+                    if parent:
+                        parent_text = parent.get_text()
+                        for pattern in patterns:
+                            m = re.search(pattern, parent_text)
+                            if m:
+                                try:
+                                    a, b = int(m.group(1)), int(m.group(2))
+                                    result = a + b if '+' in m.group(0) else a - b
+                                    print(f"[CAPTCHA SOLVED near input] {a} {'+' if '+' in m.group(0) else '-'} {b} = {result}")
+                                    return result
+                                except:
+                                    continue
+        
+        # Try simple: find any "X + Y" or "X - Y" in text
+        simple_math = re.findall(r'(\d+)\s*([\+\-])\s*(\d+)', text)
+        for a, op, b in simple_math:
+            try:
+                a, b = int(a), int(b)
+                if op == '+':
+                    result = a + b
+                else:
+                    result = a - b
+                print(f"[CAPTCHA SIMPLE] {a} {op} {b} = {result}")
+                return result
+            except:
+                continue
+        
+        print("[CAPTCHA] Could not solve captcha")
+        return None
+        
     except Exception as e:
-        print(f"[IVASMS LOGIN ERR] {e}")
-        return False
+        print(f"[CAPTCHA SOLVE ERR] {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
-def ivasms_fetch_live():
+def get_session_151():
+    """Login to 151 panel with math captcha solving"""
+    global _session_151
     try:
-        if not ivasms_login():
-            return []
-        r = _ivasms_session.get(PANELS["ivasms"]["live_url"], timeout=20)
-        if r.status_code != 200:
-            return []
-        soup = BeautifulSoup(r.text, 'html.parser')
-        rows = []
-        for tr in soup.select("table tbody tr"):
-            row_text = tr.get_text(" ", strip=True)
-            num_match = re.search(r'855\d{7,10}', row_text)
-            if num_match:
-                phone = num_match.group()
-                rows.append({"number": phone, "raw": row_text, "time": time.time()})
-        return rows
+        # Check existing session
+        if _session_151:
+            try:
+                test = _session_151.get(f"{NEW_PANEL_URL}/ints/", timeout=5)
+                if test.status_code == 200 and "login" not in test.url.lower():
+                    print("[151 SESSION] Existing session valid")
+                    return _session_151
+            except:
+                pass
+        
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        })
+        
+        print(f"[151 LOGIN] Fetching login page: {NEW_PANEL_LOGIN}")
+        login_page = session.get(NEW_PANEL_LOGIN, timeout=15)
+        print(f"[151 LOGIN PAGE] Status: {login_page.status_code}, Length: {len(login_page.text)}")
+        
+        soup = BeautifulSoup(login_page.text, 'html.parser')
+        
+        # Find login form
+        csrf_token = None
+        # Common CSRF field names
+        for csrf_name in ['_token', 'csrf_token', '_csrf', 'csrf', 'token']:
+            csrf_input = soup.find('input', {'name': csrf_name})
+            if csrf_input:
+                csrf_token = csrf_input.get('value')
+                print(f"[151 CSRF] Found {csrf_name}: {csrf_token[:30] if csrf_token else 'None'}")
+                break
+        
+        # Solve math captcha
+        captcha_answer = solve_math_captcha(login_page.text, soup)
+        print(f"[151 CAPTCHA ANSWER] {captcha_answer}")
+        
+        # Try different login field combinations
+        # Common field names for user, pass, captcha
+        user_fields = ['username', 'email', 'user', 'login', 'phone']
+        pass_fields = ['password', 'pass', 'pwd']
+        captcha_fields = ['captcha', 'captcha_result', 'answer', 'result', 'math', 'security_code', 'verify', 'captcha_code', 'captch', 'code']
+        
+        # Build login data variants
+        login_variants = []
+        
+        for u_field in user_fields:
+            for p_field in pass_fields:
+                base = {u_field: PANEL_151_USER, p_field: PANEL_151_PASS}
+                if csrf_token:
+                    base['_token'] = csrf_token
+                    base['csrf_token'] = csrf_token
+                
+                # Add captcha if solved
+                if captcha_answer is not None:
+                    for c_field in captcha_fields:
+                        variant = base.copy()
+                        variant[c_field] = str(captcha_answer)
+                        login_variants.append(variant)
+                
+                # Also try without captcha (maybe not required for API)
+                login_variants.append(base.copy())
+        
+        # Also try with common captcha field names specifically
+        if captcha_answer is not None:
+            print(f"[151 LOGIN] Trying {len(login_variants)} variants with captcha={captcha_answer}")
+        else:
+            print(f"[151 LOGIN] Trying {len(login_variants)} variants without captcha (captcha not solved)")
+        
+        for i, login_data in enumerate(login_variants[:15]):  # Try first 15 variants
+            try:
+                print(f"[151 TRY {i+1}] Fields: {list(login_data.keys())} | Data: { {k: v[:20] if k != 'password' and k != 'pass' else '***' for k,v in login_data.items() } }")
+                
+                # Try POST
+                resp = session.post(NEW_PANEL_LOGIN, data=login_data, timeout=15, allow_redirects=True)
+                print(f"[151 RESP {i+1}] Status: {resp.status_code}, URL: {resp.url}, Length: {len(resp.text)}")
+                print(f"[151 RESP TEXT {i+1}] {resp.text[:1000]}")
+                
+                # Check if login success
+                # Success indicators: redirected to dashboard, contains logout, contains numbers, no login form
+                if resp.status_code in [200, 302]:
+                    # Check URL
+                    if "login" not in resp.url.lower() or "dashboard" in resp.url.lower() or "ints" in resp.url.lower() and "login" not in resp.url.lower():
+                        # Check content
+                        lower_text = resp.text.lower()
+                        if any(x in lower_text for x in ['logout', 'dashboard', 'numbers', 'sms', 'inbox', 'welcome']):
+                            if 'login' not in lower_text[:2000] or 'invalid' not in lower_text[:1000]:
+                                print(f"[151 LOGIN SUCCESS with variant {i+1}]")
+                                _session_151 = session
+                                return session
+                
+                # Check for error messages
+                if 'invalid' in resp.text.lower() or 'error' in resp.text.lower() or 'wrong' in resp.text.lower():
+                    print(f"[151 LOGIN FAILED - Invalid credentials or captcha]")
+                    # If invalid captcha, try to re-solve
+                    new_captcha = solve_math_captcha(resp.text, BeautifulSoup(resp.text, 'html.parser'))
+                    if new_captcha and new_captcha != captcha_answer:
+                        print(f"[151 NEW CAPTCHA] {new_captcha}, retrying")
+                        captcha_answer = new_captcha
+                        # Update login data with new captcha
+                        for c_field in captcha_fields:
+                            if c_field in login_data:
+                                login_data[c_field] = str(new_captcha)
+                
+            except Exception as e:
+                print(f"[151 VARIANT {i+1} ERR] {e}")
+                continue
+        
+        print("[151 LOGIN] All variants failed")
+        return None
+        
     except Exception as e:
-        print(f"[IVASMS FETCH ERR] {e}")
+        print(f"[151 GET SESSION ERR] {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def fetch_numbers_from_151_panel():
+    """Fetch bulk numbers from 151 panel"""
+    global _numbers_cache_151
+    try:
+        if time.time() - _numbers_cache_151["last_fetch"] < 60 and _numbers_cache_151["numbers"]:
+            print(f"[151 CACHE] Using {len(_numbers_cache_151['numbers'])} cached numbers")
+            return _numbers_cache_151["numbers"]
+        
+        session = get_session_151()
+        if not session:
+            print("[151 FETCH] No session")
+            return []
+        
+        numbers = []
+        endpoints = [
+            f"{NEW_PANEL_URL}/ints/",
+            f"{NEW_PANEL_URL}/ints/dashboard",
+            f"{NEW_PANEL_URL}/ints/numbers",
+            f"{NEW_PANEL_URL}/ints/sms",
+            f"{NEW_PANEL_URL}/",
+        ]
+        
+        for endpoint in endpoints:
+            try:
+                print(f"[151 FETCH] {endpoint}")
+                resp = session.get(endpoint, timeout=15)
+                print(f"[151 FETCH RESP] {endpoint} -> {resp.status_code}, len={len(resp.text)}")
+                
+                if resp.status_code != 200:
+                    continue
+                
+                # Find phone numbers
+                import re
+                patterns = [
+                    r'\+?258\d{9,12}',
+                    r'\+?95\d{8,12}',
+                    r'\+?977\d{9,12}',
+                ]
+                
+                for pattern in patterns:
+                    matches = re.findall(pattern, resp.text)
+                    numbers.extend(matches)
+                
+                # Parse HTML
+                try:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    for elem in soup.find_all(['td', 'div', 'span']):
+                        txt = elem.get_text().strip()
+                        digits = re.sub(r'\D', '', txt)
+                        if len(digits) >= 10 and len(digits) <= 15:
+                            if digits.startswith(('258', '95', '977', '237', '1')):
+                                numbers.append(txt)
+                except:
+                    pass
+                    
+            except Exception as e:
+                print(f"[151 ENDPOINT ERR {endpoint}] {e}")
+                continue
+        
+        # Clean
+        cleaned = []
+        seen = set()
+        for num in numbers:
+            clean = re.sub(r'[^\d+]', '', str(num)).strip()
+            if clean and clean not in seen and len(clean) >= 10:
+                seen.add(clean)
+                cleaned.append(clean)
+        
+        print(f"[151 FINAL] {len(cleaned)} unique numbers")
+        
+        _numbers_cache_151["numbers"] = cleaned
+        _numbers_cache_151["last_fetch"] = time.time()
+        
+        # Save to file
+        try:
+            path = "/data/numbers_151.txt" if os.path.exists("/data") else "numbers_151.txt"
+            with open(path, "w") as f:
+                for n in cleaned:
+                    f.write(n + "\n")
+        except:
+            pass
+        
+        return cleaned
+        
+    except Exception as e:
+        print(f"[151 FETCH ERR] {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
-def get_otp_ivasms(target_number):
+def create_order_151_bulk(service, country_code):
+    """Create order - 8 numbers bulk"""
     try:
-        clean_target = re.sub(r'\D','', str(target_number))
-        with _ivasms_cache["lock"]:
-            now = time.time()
-            if now - _ivasms_cache["time"] > 5 or now - _ivasms_last_fetch["time"] > 5:
-                live_rows = ivasms_fetch_live()
-                _ivasms_cache["data"] = live_rows
-                _ivasms_cache["time"] = now
-                _ivasms_last_fetch["time"] = now
-            data = _ivasms_cache["data"]
-            for item in data:
-                num = re.sub(r'\D','', item.get("number",""))
-                if clean_target[-7:] in num or num[-7:] in clean_target or clean_target == num:
-                    raw = item.get("raw","")
-                    m = re.search(r'FB-(\d{4,8})', raw)
-                    if m:
-                        print(f"[IVASMS OTP FOUND] {target_number} => {m.group(1)}")
-                        return m.group(1)
-                    m = re.search(r'#(\d{4,8})', raw)
-                    if m:
-                        return m.group(1)
-                    m = re.search(r'\b(\d{5,6})\b', raw)
-                    if m:
-                        return m.group(1)
+        all_numbers = fetch_numbers_from_151_panel()
+        if not all_numbers:
+            print("[151 BULK] No numbers")
+            return None
+        
+        country_prefixes = {
+            "MOZAMBIQUE": "258",
+            "MOZAMBIQUE_TT": "258",
+            "MYANMAR": "95",
+            "MYANMAR_TT": "95",
+            "NEPAL": "977",
+            "NEPAL_FB": "977",
+            "CAMEROON": "237",
+        }
+        
+        prefix = country_prefixes.get(country_code.upper())
+        filtered = [n for n in all_numbers if prefix in re.sub(r'\D', '', n)] if prefix else all_numbers
+        if not filtered:
+            filtered = all_numbers
+        
+        if not filtered:
+            return None
+        
+        number = random.choice(filtered)
+        if number in _numbers_cache_151["numbers"]:
+            _numbers_cache_151["numbers"].remove(number)
+        
+        order_id = f"151_{int(time.time())}_{random.randint(1000,9999)}"
+        
+        order_info = {
+            "number": number,
+            "id": order_id,
+            "country": country_code,
+            "service": service,
+            "panel": "151_bulk",
+            "time": time.time()
+        }
+        
+        print(f"[151 BULK ORDER] {country_code} -> {number}")
+        return order_info
+        
+    except Exception as e:
+        print(f"[151 BULK ORDER ERR] {e}")
+        return None
+
+def get_otp_151_bulk(order_id):
+    """Get OTP by scraping inbox"""
+    try:
+        session = get_session_151()
+        if not session:
+            return None
+        
+        endpoints = [
+            f"{NEW_PANEL_URL}/ints/",
+            f"{NEW_PANEL_URL}/ints/sms",
+            f"{NEW_PANEL_URL}/ints/inbox",
+        ]
+        
+        for endpoint in endpoints:
+            try:
+                resp = session.get(endpoint, timeout=15)
+                if resp.status_code != 200:
+                    continue
+                
+                # Find OTP
+                otps = re.findall(r'\b\d{4,8}\b', resp.text)
+                for otp in otps:
+                    if len(otp) >= 4 and len(otp) <= 8:
+                        # Check context
+                        pos = resp.text.find(otp)
+                        ctx = resp.text[max(0, pos-50):pos+50].lower()
+                        if any(k in ctx for k in ['code', 'otp', 'facebook', 'fb', 'verification']):
+                            print(f"[151 OTP] {otp} from {endpoint}")
+                            return otp
+            except:
+                continue
+        
         return None
     except Exception as e:
-        print(f"[IVASMS OTP ERR] {e}")
+        print(f"[151 OTP ERR] {e}")
         return None
 
-def load_ranges():
-    data = {"FACEBOOK": {}, "WHATSAPP": {}, "TIKTOK": {}}
-    for path in [RANGES_FILE, "ranges.json"]:
-        if os.path.exists(path):
-            try:
-                with open(path, 'r') as f:
-                    raw = json.load(f)
-                    for srv in ["FACEBOOK", "WHATSAPP", "TIKTOK"]:
-                        for k, v in raw.get(srv, {}).items():
-                            data[srv][k.upper()] = v
-            except: pass
-    return data
+# ========== MAIN ==========
 
-def get_all_countries(service="facebook"):
-    svc = service.lower()
-    if svc in ["whatsapp","ws"]:
-        key = "WHATSAPP"
-    elif svc in ["tiktok","tt"]:
-        key = "TIKTOK"
-    else:
-        key = "FACEBOOK"
-    base = list(load_ranges().get(key, {}).keys())
-    if key == "FACEBOOK":
-        base = [b for b in base if "NEPAL" not in b.upper()]
-        base.insert(0, "NEPAL_FB")
-        if "CAMBODIA" not in [x.upper() for x in base]:
-            base.append("CAMBODIA")
-    if key == "TIKTOK":
-        return ["MOZAMBIQUE", "MYANMAR"]
-    return base
+def get_all_countries(service):
+    return ["NEPAL_FB", "MOZAMBIQUE", "MOZAMBIQUE_TT", "MYANMAR", "MYANMAR_TT", "CAMEROON", "USA", "BD"]
 
 def get_display_name(code):
-    name = code.replace("_FB","").replace("_WS","").replace("_2","").replace("_"," ").title()
-    name = ''.join([c for c in name if not c.isdigit()]).strip()
-    return name if name else code.title()
+    names = {
+        "NEPAL_FB": "Nepal",
+        "MOZAMBIQUE": "Mozambique",
+        "MOZAMBIQUE_TT": "Mozambique",
+        "MYANMAR": "Myanmar",
+        "MYANMAR_TT": "Myanmar",
+        "CAMEROON": "Cameroon",
+        "USA": "USA",
+        "BD": "Bangladesh",
+    }
+    return names.get(code.upper(), code.replace("_", " ").title())
 
-def get_range_info(code):
-    data = load_ranges()
-    for srv in ["FACEBOOK", "WHATSAPP", "TIKTOK"]:
-        if code.upper() in data.get(srv, {}):
-            val = data[srv][code.upper()]
-            if "CAMBODIA" in code.upper() or "855" in code:
-                return {"id": val, "panel": "ivasms", "service": srv}
-            if "HAD" in code.upper() or "BD" in code.upper() or "BANGLADESH" in code.upper() or "MOZAMBIQUE" in code.upper() or "MYANMAR" in code.upper():
-                return {"id": val, "panel": "had", "service": srv}
-            return {"id": val, "panel": "voltx", "service": srv}
-    file_based = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD", "MYANMAR", "CAMBODIA"]
-    for fb in file_based:
-        if fb in code.upper():
-            if fb == "CAMBODIA":
-                return {"id": "ivasms_file", "panel": "ivasms", "service": "FILE"}
-            return {"id": "had_file", "panel": "had", "service": "FILE"}
-    return None
-
-def get_number_from_file(country_code=None):
-    country = (country_code or "").upper()
-    specific_files = []
-    if "MOZAMBIQUE" in country:
-        specific_files = [os.path.join(BASE_DIR, "numbers_mozambique.txt"), "numbers_mozambique.txt"]
-    elif "MYANMAR" in country:
-        specific_files = [os.path.join(BASE_DIR, "numbers_myanmar.txt"), "numbers_myanmar.txt"]
-    elif "CAMBODIA" in country:
-        specific_files = [os.path.join(BASE_DIR, "numbers_cambodia.txt"), "numbers_cambodia.txt", "numbers.txt"]
-    elif "NEPAL" in country:
-        specific_files = [os.path.join(BASE_DIR, "numbers_nepal.txt"), "numbers_nepal.txt"]
-    general_files = [NUMBERS_FILE, "numbers.txt", os.path.join(BASE_DIR, "numbers.txt")]
-    possible_files = specific_files + general_files
-    with file_lock:
-        file_to_use = None
-        for pf in possible_files:
-            if os.path.exists(pf):
-                try:
-                    if os.path.getsize(pf) > 0:
-                        with open(pf,'r') as tf:
-                            raw = tf.readlines()
-                            content_lines = [l.strip() for l in raw if l.strip() and not l.strip().startswith("#")]
-                            if content_lines:
-                                file_to_use = pf
-                                break
-                except: continue
-        if not file_to_use:
-            return None
-        try:
-            with open(file_to_use, 'r') as f:
-                lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
-            if not lines:
-                return None
-            selected_number = None
-            remaining = []
-            if "CAMBODIA" in country:
-                for idx, line in enumerate(lines):
-                    if "855" in line:
-                        selected_number = re.sub(r'[^0-9+]', '', line)
-                        remaining = lines[:idx] + lines[idx+1:]
-                        break
-            if not selected_number:
-                selected_number = lines[0]
-                remaining = lines[1:]
-            with open(file_to_use, 'w') as f:
-                f.write("\n".join(remaining))
-            print(f"[{country} FILE] Giving {selected_number} from {file_to_use} | {len(remaining)} left")
-            return selected_number
-        except Exception as e:
-            print(f"[FILE ERR] {e}")
-            return None
-
-def client_login():
-    global _logged_in, session
-    try:
-        if _logged_in: return True
-        headers = {"User-Agent": "Mozilla/5.0"}
-        try:
-            session.get(PANELS["client"]["login_url"], headers=headers, timeout=10)
-        except: pass
-        for payload in [
-            {"username": PANELS["client"]["user"], "password": PANELS["client"]["pass"]},
-        ]:
-            try:
-                r = session.post(PANELS["client"]["login_url"], data=payload, headers=headers, timeout=15)
-                if r.status_code == 200:
-                    _logged_in = True
-                    return True
-            except: continue
-        _logged_in = True
-        return True
-    except:
-        return False
-
-def get_otp_client(target_number):
-    try:
-        client_login()
-        url = PANELS["client"]["url"]
-        r = session.post(url, data={"search_number": target_number}, timeout=20)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        for tr in soup.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) < 3: continue
-            num_col = tds[2].get_text(strip=True) if len(tds) > 2 else ""
-            sms_col = tds[4].get_text(strip=True) if len(tds) > 4 else tr.get_text()
-            clean_num = re.sub(r'\D','',num_col)
-            clean_target = re.sub(r'\D','',target_number)
-            if clean_target[-7:] in clean_num:
-                m = re.search(r'FB-(\d{4,8})', sms_col)
-                if m: return m.group(1)
-                m = re.search(r'#(\d{4,8})', sms_col)
-                if m: return m.group(1)
-                m = re.search(r'\b(\d{5,6})\b', sms_col)
-                if m: return m.group(1)
-        return None
-    except:
-        return None
-
-_had_cache = {"time": 0, "data": [], "lock": threading.Lock()}
-_had_last_request = {"time": 0}
-
-def get_otp_had(target_number):
-    try:
-        token = PANELS["had"]["key"]
-        url = PANELS["had"]["url"]
-        clean_target = re.sub(r'\D','', str(target_number))
-        params_specific = {"token": token, "filternum": clean_target, "records": 20}
-        r = requests.get(url, params=params_specific, timeout=20)
-        j = r.json()
-        data = j.get("data", [])
-        for item in data:
-            num = str(item.get("num", ""))
-            msg = str(item.get("message", ""))
-            clean_num = re.sub(r'\D','', num)
-            if clean_target[-8:] in clean_num:
-                for pat in [r'FB-(\d{4,8})', r'verification code (\d{4,8})', r'#(\d{4,8})', r'\b(\d{6})\b']:
-                    m = re.search(pat, msg, re.IGNORECASE)
-                    if m:
-                        return m.group(1)
-        return None
-    except:
-        return None
-
-def get_otp_voltx(number):
-    try:
-        num_digits = re.sub(r'\D', '', number)
-        r = requests.get(PANELS["voltx"]["otp"], headers={"mauthapi": PANELS["voltx"]["key"]}, timeout=15)
-        data = r.json()
-        if data.get("meta", {}).get("code")!= 200:
-            return None
-        for item in data.get("data", {}).get("otps", []):
-            en = re.sub(r'\D', '', str(item.get("number","")))
-            if num_digits[-8:] not in en: continue
-            msg = str(item.get("message",""))
-            m = re.search(r'G-?(\d{4,8})|(\d{3}-\d{3})|(\d{4,8})', msg)
-            if m:
-                code = next((g for g in m.groups() if g), None)
-                if code: return code.replace("-", "")
-        return None
-    except: return None
+_orders_store = {}
 
 def create_order(service, country_code):
-    file_countries = ["NEPAL", "MOZAMBIQUE", "BD", "BANGLADESH", "HAD", "MYANMAR", "CAMBODIA"]
-    upper_cc = country_code.upper()
-    is_file_based = any(fb in upper_cc for fb in file_countries)
-    if is_file_based:
-        num = get_number_from_file(country_code)
-        if num:
-            ptype = "ivasms" if "CAMBODIA" in upper_cc else "had"
-            if "NEPAL" in upper_cc: ptype = "client"
-            return {"number": num, "id": f"{ptype}|{num}", "source": ptype}
-    info = get_range_info(country_code)
-    if not info: return None
-    if info["panel"] == "ivasms":
-        num = get_number_from_file(country_code)
-        if num:
-            return {"number": num, "id": f"ivasms|{num}", "source": "ivasms"}
-        return None
-    if info["panel"] == "client":
-        num = get_number_from_file(country_code)
-        if num:
-            return {"number": num, "id": f"client|{num}", "source": "client"}
-        return None
-    if info["panel"] == "had":
-        num = get_number_from_file(country_code)
-        if num:
-            return {"number": num, "id": f"had|{num}", "source": "had"}
-        return None
-    panel = PANELS["voltx"]
-    for attempt in range(3):
-        try:
-            r = requests.post(panel["allocate"], headers={"mauthapi": panel["key"], "Content-Type": "application/json"}, json={"rid": info["id"]}, timeout=20)
-            j = r.json()
-            if j.get("meta", {}).get("code") == 200 and j.get("data"):
-                full_num = j["data"]["full_number"]
-                return {"number": full_num, "id": f"voltx|{full_num}", "source": "voltx"}
-        except:
-            time.sleep(1)
-            continue
+    print(f"[CREATE ORDER] {service} {country_code}")
+    
+    # Try 151 bulk
+    try:
+        result = create_order_151_bulk(service, country_code)
+        if result:
+            _orders_store[result["id"]] = result
+            return result
+    except Exception as e:
+        print(f"[ORDER 151 ERR] {e}")
+    
+    # Fallback file
+    try:
+        base_dir = "/data" if os.path.exists("/data") else "."
+        file_map = {
+            "MOZAMBIQUE": "numbers_mozambique.txt",
+            "MOZAMBIQUE_TT": "numbers_mozambique.txt",
+            "MYANMAR": "numbers_myanmar.txt",
+            "MYANMAR_TT": "numbers_myanmar.txt",
+            "NEPAL": "numbers_nepal.txt",
+            "NEPAL_FB": "numbers_nepal.txt",
+        }
+        fname = file_map.get(country_code.upper(), "numbers.txt")
+        fpath = os.path.join(base_dir, fname)
+        
+        if os.path.exists(fpath):
+            with open(fpath, 'r') as f:
+                lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                if lines:
+                    number = lines[0]
+                    remaining = lines[1:]
+                    with open(fpath, 'w') as fw:
+                        for ln in remaining:
+                            fw.write(ln + "\n")
+                    
+                    order_id = f"file_{int(time.time())}_{random.randint(1000,9999)}"
+                    result = {"number": number, "id": order_id, "country": country_code, "service": service, "panel": "file"}
+                    _orders_store[order_id] = result
+                    print(f"[ORDER FILE] {fname} -> {number}")
+                    return result
+    except Exception as e:
+        print(f"[ORDER FILE ERR] {e}")
+    
     return None
 
 def get_otp(order_id):
+    if order_id in _orders_store and "151" in _orders_store[order_id].get("panel", ""):
+        return get_otp_151_bulk(order_id)
+    
     try:
-        ptype, number = order_id.split("|", 1) if "|" in order_id else ("voltx", order_id)
-        if ptype == "client":
-            return get_otp_client(number)
-        elif ptype == "had":
-            return get_otp_had(number)
-        elif ptype == "ivasms":
-            return get_otp_ivasms(number)
-        else:
-            return get_otp_voltx(number)
-    except Exception as e:
-        print(f"[GET OTP ERR] {e}")
-        return None
+        otp = get_otp_151_bulk(order_id)
+        if otp:
+            return otp
+    except:
+        pass
+    
+    return None
+
+print("[PANEL] Loaded - 151.80.19.204 WITH MATH CAPTCHA SOLVER (jog biyog)")
+print(f"[PANEL] User: {PANEL_151_USER[:3]}... | Pass set: {bool(PANEL_151_PASS)}")
