@@ -17,19 +17,37 @@ PANEL_151_PASS = os.getenv("PANEL_151_PASS", "")
 _session_151 = None
 _session_time = 0
 _session_lock = threading.Lock()
+_last_panel_hit = 0
+_panel_hit_lock = threading.Lock()
 _orders_store = {}
+
+def rate_limit_panel():
+    """Ensure at least 5 seconds between panel hits to avoid block"""
+    global _last_panel_hit
+    with _panel_hit_lock:
+        now = time.time()
+        elapsed = now - _last_panel_hit
+        if elapsed < 5:
+            wait = 5 - elapsed
+            print(f"[RATE LIMIT] Waiting {wait:.1f}s before hitting panel")
+            time.sleep(wait)
+        _last_panel_hit = time.time()
 
 def solve_math_captcha(text):
     try:
         m = re.search(r'What is (\d+)\s*([\+\-])\s*(\d+)\s*=\s*\?', text, re.I)
         if m:
             a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
-            return a + b if op == '+' else a - b
+            ans = a + b if op == '+' else a - b
+            print(f"[CAPTCHA] {a} {op} {b} = {ans}")
+            return ans
         m = re.search(r'(\d+)\s*([\+\-])\s*(\d+)\s*=\s*\?', text)
         if m:
             a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
             if a < 100 and b < 100:
-                return a + b if op == '+' else a - b
+                ans = a + b if op == '+' else a - b
+                print(f"[CAPTCHA] {a} {op} {b} = {ans}")
+                return ans
         return None
     except:
         return None
@@ -38,9 +56,10 @@ def get_session_151():
     global _session_151, _session_time
     try:
         with _session_lock:
-            # Use cached session if < 15 min old - CRITICAL to avoid 8 concurrent logins
-            if _session_151 and (time.time() - _session_time < 900):
+            # Use cached session if < 20 min old
+            if _session_151 and (time.time() - _session_time < 1200):
                 try:
+                    rate_limit_panel()
                     test = _session_151.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=10)
                     if test.status_code == 200 and "login" not in test.url.lower():
                         print("[151] Using cached session")
@@ -56,17 +75,25 @@ def get_session_151():
                 print("[151] USER/PASS not set!")
                 return None
             
-            for retry in range(3):
+            # Retry with exponential backoff
+            resp = None
+            for retry in range(5):
                 try:
+                    rate_limit_panel()
                     resp = session.get(NEW_PANEL_LOGIN, timeout=15)
                     break
-                except requests.exceptions.ConnectionError:
-                    print(f"[151] Connection refused GET, retry {retry+1}/3 waiting {3*(retry+1)}s")
-                    if retry == 2:
+                except requests.exceptions.ConnectionError as e:
+                    wait = (retry+1)*5
+                    print(f"[151] Connection refused GET, retry {retry+1}/5 waiting {wait}s")
+                    if retry == 4:
+                        print("[151] Panel blocked - giving up for now")
                         return None
-                    time.sleep(3*(retry+1))
+                    time.sleep(wait)
                     continue
             
+            if not resp:
+                return None
+                
             print(f"[151] Login page len={len(resp.text)}")
             
             soup = BeautifulSoup(resp.text, 'html.parser')
@@ -88,6 +115,7 @@ def get_session_151():
             
             for url in [NEW_PANEL_SIGNIN]:
                 try:
+                    rate_limit_panel()
                     r = session.post(url, data=data, timeout=15, allow_redirects=True, headers={
                         "Referer": NEW_PANEL_LOGIN,
                         "Origin": NEW_PANEL_URL,
@@ -99,9 +127,9 @@ def get_session_151():
                             _session_151 = session
                             _session_time = time.time()
                             return session
-                except requests.exceptions.ConnectionError:
-                    print(f"[151] Connection refused POST, retrying...")
-                    time.sleep(3)
+                except requests.exceptions.ConnectionError as e:
+                    print(f"[151] Connection refused POST, waiting 10s")
+                    time.sleep(10)
                     continue
                 except Exception as e:
                     print(f"[151 POST ERR] {e}")
@@ -117,26 +145,27 @@ def get_session_151():
 
 def get_otp_from_panel(order_id):
     try:
-        # Critical: Add random delay to stagger 8 watchers - avoid simultaneous hits
-        delay = random.uniform(1, 5)
+        # Stagger watchers: random delay 0-10s
+        delay = random.uniform(0, 10)
         print(f"[OTP] {order_id} waiting {delay:.1f}s to avoid rate limit")
         time.sleep(delay)
         
         session = get_session_151()
         if not session:
-            print("[OTP] No session - will retry in 15s")
+            print("[OTP] No session - panel blocked, will retry in 30s")
             return None
         
         endpoints = [
             f"{NEW_PANEL_URL}/ints/agent/SMSDashboard",
-            f"{NEW_PANEL_URL}/ints/",
         ]
         
         for endpoint in endpoints:
             try:
+                rate_limit_panel()
                 print(f"[OTP] Fetching {endpoint} for {order_id}")
                 resp = session.get(endpoint, timeout=20)
                 if resp.status_code != 200:
+                    print(f"[OTP] {endpoint} status={resp.status_code}")
                     continue
                 if "login" in resp.url.lower():
                     print(f"[OTP] Session expired, clearing cache")
@@ -156,10 +185,10 @@ def get_otp_from_panel(order_id):
                         otps = re.findall(r'\b\d{4,8}\b', row_text)
                         for otp in otps:
                             if 4 <= len(otp) <= 8 and row_text.count('+') < 3:
-                                print(f"[OTP FOUND] {otp} in row")
+                                print(f"[OTP FOUND] {otp}")
                                 return otp
                 
-                # Regex fallback
+                # Fallback
                 all_nums = re.findall(r'\b\d{5,6}\b', text)
                 for otp in all_nums:
                     pos = text.find(otp)
@@ -169,8 +198,8 @@ def get_otp_from_panel(order_id):
                         return otp
                         
             except requests.exceptions.ConnectionError:
-                print(f"[OTP] Connection refused - panel rate limiting, waiting 15s")
-                time.sleep(15)
+                print(f"[OTP] Connection refused - panel rate limiting, waiting 20s")
+                time.sleep(20)
                 continue
             except Exception as e:
                 print(f"[OTP] {endpoint} ERR: {e}")
@@ -182,7 +211,7 @@ def get_otp_from_panel(order_id):
         print(f"[OTP ERR] {e}")
         return None
 
-# ========== FILE NUMBERS - 8 per click ==========
+# ========== FILE NUMBERS ==========
 
 def get_numbers_file_path(country_code):
     base = "/data" if os.path.exists("/data") else "."
@@ -263,5 +292,5 @@ def get_otp(order_id):
         return otp
     return None
 
-print("[PANEL] FINAL - Cached session + Rate limit fix + SMSDashboard")
+print("[PANEL] FINAL - Rate limit 5s + Cached session + SMSDashboard")
 print(f"[PANEL] User={PANEL_151_USER} PassSet={bool(PANEL_151_PASS)}")
