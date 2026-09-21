@@ -16,20 +16,12 @@ _session_151 = None
 _orders_store = {}
 
 def solve_math_captcha(text, soup=None):
-    """Solve jog biyog - handles 1+3, 4+10 etc - only small numbers <100"""
     try:
-        # First try to find near captcha label
         if soup:
-            # Find elements containing math with small numbers
             for elem in soup.find_all(string=re.compile(r'\d+\s*[\+\-\*]\s*\d+')):
                 txt = str(elem).strip()
-                # Skip long texts (phone numbers)
                 if len(txt) > 30:
                     continue
-                # Skip if contains many digits (phone)
-                if txt.count('+') == 0 and txt.count('-') == 0:
-                    # Might be phone, skip
-                    pass
                 m = re.search(r'(\d+)\s*([\+\-\*])\s*(\d+)', txt)
                 if m:
                     a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
@@ -38,8 +30,6 @@ def solve_math_captcha(text, soup=None):
                         print(f"[CAPTCHA] {a} {op} {b} = {ans} from '{txt[:50]}'")
                         return ans
         
-        # Fallback: regex on text with context check
-        # Find patterns like "1 + 3 = ?" 
         pattern = r'(\d+)\s*([\+\-])\s*(\d+)\s*=\s*\?'
         matches = re.findall(pattern, text)
         for a, op, b in matches:
@@ -49,12 +39,10 @@ def solve_math_captcha(text, soup=None):
                 print(f"[CAPTCHA] {a} {op} {b} = {ans} (pattern ?=)")
                 return ans
         
-        # General small math near captcha keywords
         all_matches = re.findall(r'(\d+)\s*([\+\-])\s*(\d+)', text)
         for a, op, b in all_matches:
             a, b = int(a), int(b)
-            if a < 50 and b < 50:  # Very small numbers likely captcha
-                # Check surrounding context
+            if a < 50 and b < 50:
                 search_str = f"{a} {op} {b}"
                 idx = text.find(search_str)
                 if idx == -1:
@@ -67,7 +55,6 @@ def solve_math_captcha(text, soup=None):
                         print(f"[CAPTCHA] {a} {op} {b} = {ans} (context)")
                         return ans
         
-        # Last resort: first small math
         for a, op, b in all_matches:
             a, b = int(a), int(b)
             if a < 20 and b < 20:
@@ -95,11 +82,18 @@ def get_session_151():
         
         session = requests.Session()
         session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         })
         
         print(f"[151 LOGIN] GET {NEW_PANEL_LOGIN}")
+        print(f"[151 CREDS CHECK] USER='{PANEL_151_USER}' PASS_SET={bool(PANEL_151_PASS)} PASS_LEN={len(PANEL_151_PASS) if PANEL_151_PASS else 0}")
+        
+        if not PANEL_151_USER or not PANEL_151_PASS:
+            print("[151 ERROR] PANEL_151_USER or PANEL_151_PASS not set in Railway Variables!")
+            print("[151 ERROR] Set them in Railway -> Variables -> PANEL_151_USER and PANEL_151_PASS")
+            return None
+        
         try:
             login_page = session.get(NEW_PANEL_LOGIN, timeout=15)
         except Exception as e:
@@ -108,15 +102,29 @@ def get_session_151():
         
         print(f"[151 PAGE] status={login_page.status_code} url={login_page.url} len={len(login_page.text)}")
         
-        soup = BeautifulSoup(login_page.text, 'html.parser')
+        # Print HTML snippet for debugging - very important
+        html = login_page.text
+        # Find captcha area
+        captcha_idx = html.lower().find('captcha')
+        if captcha_idx != -1:
+            print(f"[151 HTML CAPTCHA AREA] {html[max(0,captcha_idx-200):captcha_idx+300]}")
+        else:
+            print(f"[151 HTML START] {html[:2000]}")
         
-        # Find form
+        soup = BeautifulSoup(html, 'html.parser')
+        
         forms = soup.find_all('form')
         print(f"[151 FORMS] {len(forms)} found")
-        for i, form in enumerate(forms[:2]):
+        for i, form in enumerate(forms):
             action = form.get('action','')
-            inputs = [(inp.get('name'), inp.get('type')) for inp in form.find_all('input')]
-            print(f"[151 FORM {i}] action={action} inputs={inputs}")
+            method = form.get('method','GET')
+            inputs = []
+            for inp in form.find_all('input'):
+                inputs.append(f"{inp.get('name')}({inp.get('type')}) placeholder={inp.get('placeholder','')}")
+            print(f"[151 FORM {i}] action={action} method={method}")
+            print(f"[151 FORM {i} INPUTS] {inputs}")
+            # Also print form HTML
+            print(f"[151 FORM {i} HTML] {str(form)[:1000]}")
         
         csrf_token = None
         csrf_name = '_token'
@@ -125,18 +133,20 @@ def get_session_151():
             if inp and inp.get('value'):
                 csrf_token = inp.get('value')
                 csrf_name = name
-                print(f"[151 CSRF] {name} found")
+                print(f"[151 CSRF] {name} found len={len(csrf_token)}")
                 break
         
-        captcha_ans = solve_math_captcha(login_page.text, soup)
+        captcha_ans = solve_math_captcha(html, soup)
         print(f"[151 CAPTCHA ANS] {captcha_ans}")
         
-        # Detect field names
+        # Detect field names more carefully
         username_field = None
         password_field = None
         captcha_field = None
         
         all_inputs = soup.find_all('input')
+        print(f"[151 ALL INPUTS] {[(inp.get('name'), inp.get('type'), inp.get('placeholder','')[:20]) for inp in all_inputs]}")
+        
         for inp in all_inputs:
             name = inp.get('name','')
             if not name:
@@ -152,7 +162,7 @@ def get_session_151():
                 if type_a in ['text','email',''] and any(x in name_l for x in ['email','user','login']):
                     if 'pass' not in name_l and 'captcha' not in name_l:
                         username_field = name
-                elif 'email' in placeholder or 'username' in placeholder:
+                elif 'email' in placeholder or 'username' in placeholder or 'user' in placeholder:
                     username_field = name
             
             if not password_field:
@@ -178,7 +188,6 @@ def get_session_151():
             password_field = 'password'
         
         if not captcha_field and captcha_ans is not None:
-            # Find remaining input that could be captcha
             for inp in all_inputs:
                 name = inp.get('name','')
                 if name and name not in [username_field, password_field, csrf_name] and inp.get('type','').lower() not in ['hidden','submit','checkbox']:
@@ -187,12 +196,12 @@ def get_session_151():
             if not captcha_field:
                 captcha_field = 'captcha'
         
-        print(f"[151 FIELDS] user={username_field} pass={password_field} captcha={captcha_field} csrf={csrf_name}")
+        print(f"[151 FIELDS DETECTED] user={username_field} pass={password_field} captcha={captcha_field} csrf={csrf_name}")
         
-        # Build attempts
+        # Build attempts - try without captcha first, then with
         attempts = []
         
-        # Main attempt with detected fields
+        # Try 1: Detected fields with captcha
         data_main = {}
         if csrf_token:
             data_main[csrf_name] = csrf_token
@@ -200,37 +209,48 @@ def get_session_151():
         data_main[password_field] = PANEL_151_PASS
         if captcha_ans is not None and captcha_field:
             data_main[captcha_field] = str(captcha_ans)
-        attempts.append(data_main)
+        attempts.append(("detected_with_captcha", data_main))
         
-        # Common variants
+        # Try 2: Detected fields without captcha (maybe captcha field name wrong)
+        data_main2 = {}
+        if csrf_token:
+            data_main2[csrf_name] = csrf_token
+        data_main2[username_field] = PANEL_151_USER
+        data_main2[password_field] = PANEL_151_PASS
+        attempts.append(("detected_without_captcha", data_main2))
+        
+        # Common combos with captcha
         combos = [
             {'email': PANEL_151_USER, 'password': PANEL_151_PASS},
             {'username': PANEL_151_USER, 'password': PANEL_151_PASS},
+            {'name': PANEL_151_USER, 'password': PANEL_151_PASS},
+            {'user': PANEL_151_USER, 'password': PANEL_151_PASS},
         ]
+        
         for combo in combos:
             base = {}
             if csrf_token:
                 base[csrf_name] = csrf_token
             base.update(combo)
             if captcha_ans is not None:
-                for cf in [captcha_field, 'captcha', 'answer', 'captcha_result', 'result']:
+                for cf in [captcha_field, 'captcha', 'answer', 'result', 'captcha_answer', 'security_code', 'code', 'verify', 'captcha_result']:
                     if cf and cf not in base:
                         d = base.copy()
                         d[cf] = str(captcha_ans)
-                        attempts.append(d)
-            attempts.append(base)
+                        attempts.append((f"combo_{list(combo.keys())[0]}_with_{cf}", d))
+            attempts.append((f"combo_{list(combo.keys())[0]}_no_captcha", base))
         
-        for idx, data in enumerate(attempts[:8]):
+        for idx, (desc, data) in enumerate(attempts[:15]):
             try:
                 safe_log = {}
                 for k,v in data.items():
                     if 'pass' in k.lower():
                         safe_log[k] = '***'
                     elif k == csrf_name:
-                        safe_log[k] = v[:10]+'...'
+                        safe_log[k] = str(v)[:15]+'...'
                     else:
                         safe_log[k] = v
-                print(f"[151 TRY {idx+1}] {safe_log}")
+                print(f"[151 TRY {idx+1} {desc}] {safe_log}")
                 
                 resp = session.post(NEW_PANEL_LOGIN, data=data, timeout=15, allow_redirects=True, headers={
                     "Referer": NEW_PANEL_LOGIN,
@@ -238,24 +258,45 @@ def get_session_151():
                     "Content-Type": "application/x-www-form-urlencoded",
                 })
                 
-                print(f"[151 TRY {idx+1} RESP] status={resp.status_code} url={resp.url[:60]} len={len(resp.text)}")
+                print(f"[151 TRY {idx+1} RESP] status={resp.status_code} url={resp.url[:80]} len={len(resp.text)}")
                 
+                # If not on login page anymore, success
                 if "login" not in resp.url.lower():
                     lower = resp.text.lower()
-                    if any(x in lower for x in ['logout','dashboard','welcome','inbox','balance']):
-                        print(f"[151 LOGIN SUCCESS] Try {idx+1}")
+                    if any(x in lower for x in ['logout','dashboard','welcome','inbox','sms','balance']):
+                        print(f"[151 LOGIN SUCCESS] Try {idx+1} {desc} - URL: {resp.url}")
                         _session_151 = session
                         return session
+                    else:
+                        print(f"[151 TRY {idx+1}] Redirected but not to dashboard - body: {resp.text[:500]}")
                 else:
-                    # Check error
-                    if "invalid" in resp.text.lower() or "incorrect" in resp.text.lower():
-                        print(f"[151 TRY {idx+1}] Invalid credentials error")
+                    # Still on login - find error message
+                    soup_resp = BeautifulSoup(resp.text, 'html.parser')
+                    # Look for alert, error, invalid
+                    error_selectors = ['.alert', '.error', '.invalid', '[class*=error]', '[class*=alert]', '.text-danger', '.help-block']
+                    for sel in error_selectors:
+                        err = soup_resp.select_one(sel)
+                        if err:
+                            print(f"[151 TRY {idx+1} ERROR MSG] {err.get_text()[:300]}")
+                            break
+                    # Also check for any text with error
+                    if "invalid" in resp.text.lower() or "error" in resp.text.lower() or "wrong" in resp.text.lower() or "incorrect" in resp.text.lower():
+                        # Find the sentence
+                        for line in resp.text.split('\n'):
+                            if any(x in line.lower() for x in ['invalid','error','wrong','incorrect','failed']):
+                                if len(line.strip()) < 200:
+                                    print(f"[151 TRY {idx+1} ERROR LINE] {line.strip()[:200]}")
                 
             except Exception as e:
                 print(f"[151 TRY {idx+1} EXC] {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         print("[151 LOGIN FAILED] All tries failed")
+        print("[151 DEBUG] If you see 'captcha' errors, check if captcha field name is correct")
+        print("[151 DEBUG] If you see 'invalid credentials', check USER/PASS in Railway Variables")
+        print(f"[151 DEBUG] Current USER='{PANEL_151_USER}' - make sure it's correct (maybe need email not username?)")
         return None
     except Exception as e:
         print(f"[151 SESSION ERR] {e}")
@@ -267,7 +308,7 @@ def get_otp_from_panel(order_id):
     try:
         session = get_session_151()
         if not session:
-            print("[OTP] No session")
+            print("[OTP] No session - login failed")
             return None
         
         endpoints = [
@@ -282,11 +323,10 @@ def get_otp_from_panel(order_id):
                 if resp.status_code != 200:
                     continue
                 if "login" in resp.url.lower():
+                    print(f"[OTP] Redirected to login from {endpoint}")
                     continue
                 
                 text = resp.text
-                # Find OTP near facebook etc
-                # Pattern: 6 digit code
                 otps = re.findall(r'\b\d{4,8}\b', text)
                 for otp in otps:
                     if 4 <= len(otp) <= 8:
@@ -295,14 +335,18 @@ def get_otp_from_panel(order_id):
                         if any(k in ctx for k in ['code','otp','facebook','fb','verification']):
                             print(f"[OTP FOUND] {otp} from {endpoint}")
                             return otp
-            except:
+            except Exception as e:
+                print(f"[OTP {endpoint} ERR] {e}")
                 continue
+        print("[OTP] Not found")
         return None
     except Exception as e:
         print(f"[OTP ERR] {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
-# ========== FILE NUMBERS - GITHUB FILE -> 8 numbers ==========
+# ========== FILE NUMBERS ==========
 
 def get_numbers_file_path(country_code):
     base = "/data" if os.path.exists("/data") else "."
@@ -423,5 +467,5 @@ def get_otp(order_id):
         return otp
     return None
 
-print("[PANEL] FINAL - Github file -> 8 numbers -> Panel OTP with fixed captcha")
-print(f"[PANEL] User: {PANEL_151_USER[:3]}... | Pass set: {bool(PANEL_151_PASS)}")
+print("[PANEL] FINAL DEBUG - Detailed login debug")
+print(f"[PANEL] User: '{PANEL_151_USER}' | Pass set: {bool(PANEL_151_PASS)} | Pass len: {len(PANEL_151_PASS) if PANEL_151_PASS else 0}")
