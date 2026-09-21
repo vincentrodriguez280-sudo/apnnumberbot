@@ -82,33 +82,23 @@ def sync_number_files():
                                 print(f"[SYNC COPY ERR] {e}")
                                 pass
                 else:
-                    # File exists in /data - check if it has numbers or only comments
-                    # If only comments (0 numbers) and src has numbers, AND dst was never used (size small), copy
-                    # But if dst was used and became empty, DON'T copy to avoid duplicate
+                    # If /data file empty, refresh from github
                     try:
-                        if os.path.getsize(dst) < 200:  # Small file, likely empty/template
-                            with open(dst,'r') as f:
-                                dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
-                            if len(dst_numbers) == 0:
-                                # Check if this is first time (template) vs used up
-                                # If dst is template (contains # Example), allow copy from src with real numbers
-                                with open(dst,'r') as f:
-                                    dst_content = f.read()
-                                if "# Example" in dst_content or "ADD YOUR" in dst_content:
-                                    for src in src_candidates:
-                                        if os.path.exists(src):
-                                            with open(src,'r') as sf:
-                                                src_content = sf.read()
-                                                src_numbers = [l.strip() for l in src_content.split("\n") if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
-                                            # Only copy if src has REAL numbers (not just example)
-                                            # Real numbers don't have # and have correct prefix
-                                            real_src_numbers = [n for n in src_numbers if not n.startswith("#") and (n.startswith("258") or n.startswith("95") or n.startswith("977"))]
-                                            if len(real_src_numbers) > 0 and len(real_src_numbers) > len(dst_numbers):
-                                                # Check if src is not template
-                                                if src_content.count("Example") < 2:
-                                                    shutil.copy(src, dst)
-                                                    print(f"[SYNC] Initial copy {src} -> {dst} ({len(real_src_numbers)} real numbers)")
-                                                    break
+                        with open(dst,'r') as f:
+                            dst_numbers = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                        if len(dst_numbers) == 0:
+                            for src in src_candidates:
+                                if os.path.exists(src):
+                                    try:
+                                        with open(src,'r') as sf:
+                                            src_content = sf.read()
+                                            src_numbers = [l.strip() for l in src_content.split("\n") if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
+                                        if len(src_numbers) > 0:
+                                            shutil.copy(src, dst)
+                                            print(f"[SYNC] Refreshed {src} -> {dst} ({len(src_numbers)} numbers) - was empty")
+                                            break
+                                    except:
+                                        continue
                     except: pass
     except Exception as e:
         print(f"[SYNC ERR] {e}")
