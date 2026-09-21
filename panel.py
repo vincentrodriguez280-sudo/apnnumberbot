@@ -13,6 +13,9 @@ NEW_PANEL_SIGNIN = f"{NEW_PANEL_URL}/ints/signin"
 
 PANEL_151_USER = os.getenv("PANEL_151_USER", "")
 PANEL_151_PASS = os.getenv("PANEL_151_PASS", "")
+# Optional proxy to bypass IP block - set in Railway Variables if needed
+HTTP_PROXY = os.getenv("HTTP_PROXY", "") or os.getenv("http_proxy", "")
+HTTPS_PROXY = os.getenv("HTTPS_PROXY", "") or os.getenv("https_proxy", "")
 
 _session_151 = None
 _session_time = 0
@@ -21,14 +24,19 @@ _last_hit = 0
 _hit_lock = threading.Lock()
 _orders_store = {}
 
+def get_proxies():
+    if HTTP_PROXY:
+        return {"http": HTTP_PROXY, "https": HTTPS_PROXY or HTTP_PROXY}
+    return None
+
 def rate_limit():
     global _last_hit
     with _hit_lock:
         now = time.time()
         diff = now - _last_hit
-        if diff < 8:
-            wait = 8 - diff
-            print(f"[RATE] Waiting {wait:.1f}s")
+        if diff < 10:
+            wait = 10 - diff
+            print(f"[RATE] Waiting {wait:.1f}s before panel hit")
             time.sleep(wait)
         _last_hit = time.time()
 
@@ -47,39 +55,46 @@ def solve_captcha(text):
 def get_session_151():
     global _session_151, _session_time
     with _session_lock:
+        # Use cached session if < 20 min old - CRITICAL to avoid 8 concurrent logins
         if _session_151 and (time.time() - _session_time < 1200):
             try:
                 rate_limit()
-                test = _session_151.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=15)
+                test = _session_151.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=15, proxies=get_proxies())
                 if test.status_code == 200 and "login" not in test.url.lower():
                     print("[151] Using cached session")
                     return _session_151
-            except:
-                pass
+            except Exception as e:
+                print(f"[151 CACHE CHECK ERR] {e}")
         
         print("[151] New session - GET login")
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0"})
         
         if not PANEL_151_USER or not PANEL_151_PASS:
+            print("[151] USER/PASS not set!")
             return None
         
-        # 5 retries with increasing wait
+        # 5 retries with exponential backoff
         resp = None
         for i in range(5):
             try:
                 rate_limit()
-                resp = session.get(NEW_PANEL_LOGIN, timeout=20)
+                resp = session.get(NEW_PANEL_LOGIN, timeout=20, proxies=get_proxies())
                 break
-            except requests.exceptions.ConnectionError:
-                wait = (i+1)*8
-                print(f"[151] Conn refused GET retry {i+1}/5 wait {wait}s")
+            except requests.exceptions.ConnectionError as e:
+                wait = (i+1)*10
+                print(f"[151] Conn refused GET retry {i+1}/5 wait {wait}s - Panel blocking Railway IP?")
                 if i == 4:
+                    print("[151] Panel blocked - check if http://151.80.19.204/ints/login accessible from browser")
+                    print("[151] If panel has firewall, whitelist Railway IP or use proxy")
                     return None
                 time.sleep(wait)
+                continue
         
         if not resp:
             return None
+        
+        print(f"[151] Login page len={len(resp.text)}")
         
         soup = BeautifulSoup(resp.text, 'html.parser')
         csrf = None
@@ -101,10 +116,9 @@ def get_session_151():
         for attempt in range(3):
             try:
                 rate_limit()
-                r = session.post(NEW_PANEL_SIGNIN, data=data, timeout=20, allow_redirects=True, headers={
-                    "Referer": NEW_PANEL_LOGIN,
-                    "Origin": NEW_PANEL_URL,
-                })
+                r = session.post(NEW_PANEL_SIGNIN, data=data, timeout=20, allow_redirects=True, 
+                               proxies=get_proxies(),
+                               headers={"Referer": NEW_PANEL_LOGIN, "Origin": NEW_PANEL_URL})
                 print(f"[151] POST signin -> {r.status_code} url={r.url} len={len(r.text)}")
                 if "login" not in r.url.lower():
                     if any(x in r.text.lower() for x in ['logout','dashboard','sms']):
@@ -113,8 +127,11 @@ def get_session_151():
                         _session_time = time.time()
                         return session
             except requests.exceptions.ConnectionError:
-                print(f"[151] Conn refused POST retry {attempt+1}")
-                time.sleep(10)
+                print(f"[151] Conn refused POST retry {attempt+1} wait 15s")
+                time.sleep(15)
+                continue
+            except Exception as e:
+                print(f"[151 POST ERR] {e}")
                 continue
         
         print("[151 LOGIN FAILED]")
@@ -122,28 +139,33 @@ def get_session_151():
 
 def get_otp_from_panel(order_id):
     try:
-        delay = random.uniform(2, 8)
-        print(f"[OTP] {order_id} delay {delay:.1f}s")
+        # Stagger: random delay 2-10s to avoid 8 watchers hitting at once
+        delay = random.uniform(2, 10)
+        print(f"[OTP] {order_id} delay {delay:.1f}s to avoid rate limit")
         time.sleep(delay)
         
         session = get_session_151()
         if not session:
-            print("[OTP] No session - panel blocked, retry in 30s")
+            print("[OTP] No session - panel blocked, retry in 40s")
             return None
         
         rate_limit()
         print(f"[OTP] Fetch SMSDashboard for {order_id}")
         try:
-            resp = session.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=25)
+            resp = session.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=25, proxies=get_proxies())
         except requests.exceptions.ConnectionError:
-            print("[OTP] Conn refused on SMSDashboard - waiting 30s")
-            time.sleep(30)
+            print("[OTP] Conn refused on SMSDashboard - panel blocking, waiting 40s")
+            time.sleep(40)
             return None
         
-        if resp.status_code != 200 or "login" in resp.url.lower():
-            print(f"[OTP] Session expired or status {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"[OTP] Status {resp.status_code}")
+            return None
+        
+        if "login" in resp.url.lower():
+            print(f"[OTP] Session expired, clearing cache")
+            global _session_151
             with _session_lock:
-                global _session_151
                 _session_151 = None
             return None
         
@@ -158,31 +180,35 @@ def get_otp_from_panel(order_id):
                 nums = re.findall(r'\b\d{4,8}\b', rt)
                 for otp in nums:
                     if 4 <= len(otp) <= 8 and rt.count('+') < 3:
-                        print(f"[OTP FOUND] {otp}")
+                        print(f"[OTP FOUND] {otp} in row: {rt[:100]}")
                         return otp
         
-        # Fallback
+        # Fallback regex
         all_nums = re.findall(r'\b\d{5,6}\b', text)
         for otp in all_nums:
             pos = text.find(otp)
             ctx = text[max(0,pos-200):pos+200].lower()
             if 'facebook' in ctx or 'verification' in ctx:
-                print(f"[OTP FOUND] {otp} via ctx")
+                print(f"[OTP FOUND] {otp} via context")
                 return otp
         
         print("[OTP] Not found yet")
         return None
     except Exception as e:
         print(f"[OTP ERR] {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
-# File numbers - 8 per click
+# ========== FILE NUMBERS - 8 per click ==========
 
 def get_numbers_file_path(country_code):
     base = "/data" if os.path.exists("/data") else "."
     file_map = {
         "MOZAMBIQUE": "numbers_mozambique.txt",
+        "MOZAMBIQUE_TT": "numbers_mozambique.txt",
         "MYANMAR": "numbers_myanmar.txt",
+        "MYANMAR_TT": "numbers_myanmar.txt",
         "NEPAL": "numbers_nepal.txt",
         "NEPAL_FB": "numbers_nepal.txt",
         "CAMEROON": "numbers_cameroon.txt",
@@ -191,7 +217,7 @@ def get_numbers_file_path(country_code):
         "CAMBODIA": "numbers_cambodia.txt",
     }
     fname = file_map.get(country_code.upper(), "numbers_151.txt")
-    candidates = [os.path.join(base, fname), os.path.join(base, "numbers_151.txt"), os.path.join(base, "numbers.txt"), fname, "numbers_151.txt"]
+    candidates = [os.path.join(base, fname), os.path.join(base, "numbers_151.txt"), os.path.join(base, "numbers.txt"), fname, "numbers_151.txt", "numbers.txt"]
     for fpath in candidates:
         if os.path.exists(fpath):
             try:
@@ -231,6 +257,8 @@ def create_order_from_file(service, country_code):
         return result
     except Exception as e:
         print(f"[FILE ERR] {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def get_all_countries(service):
@@ -255,5 +283,5 @@ def get_otp(order_id):
         return otp
     return None
 
-print("[PANEL] FINAL - Rate limit 8s + Cached session")
-print(f"[PANEL] User={PANEL_151_USER} PassSet={bool(PANEL_151_PASS)}")
+print("[PANEL] FINAL - Rate limit 10s + Cached session + Proxy support + SMSDashboard")
+print(f"[PANEL] User={PANEL_151_USER} PassSet={bool(PANEL_151_PASS)} Proxy={'Set' if HTTP_PROXY else 'None'}")
