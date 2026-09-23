@@ -55,7 +55,6 @@ DEFAULT_CONFIG = {
     },
     "buttons": {
         "get_number": "📱 Get Number",
-        "my_numbers": "📋 My Numbers",
         "balance": "💰 Balance",
         "refer": "👥 Refer",
         "help": "❓ Help",
@@ -66,7 +65,6 @@ DEFAULT_CONFIG = {
         "channel_btn": "📢 Channel",
         "services_facebook": "📘 Facebook",
         "services_whatsapp": "💬 WhatsApp",
-        "services_tiktok": "🎵 TikTok",
         "admin_panel": "⚙️ Admin Panel"
     },
     "texts": {
