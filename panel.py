@@ -3,285 +3,309 @@ import os
 import requests
 import time
 import random
+import json
 import re
-import threading
-from bs4 import BeautifulSoup
 
-NEW_PANEL_URL = "http://151.80.19.204"
-NEW_PANEL_LOGIN = f"{NEW_PANEL_URL}/ints/login"
-NEW_PANEL_SIGNIN = f"{NEW_PANEL_URL}/ints/signin"
+# ========== 2oo9.cloud (Voltx) API Panel - ONLY THIS PANEL ==========
+# Base path from documentation
+BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tnevs/@public/api"
 
-PANEL_151_USER = os.getenv("PANEL_151_USER", "")
-PANEL_151_PASS = os.getenv("PANEL_151_PASS", "")
-# Optional proxy to bypass IP block - set in Railway Variables if needed
-HTTP_PROXY = os.getenv("HTTP_PROXY", "") or os.getenv("http_proxy", "")
-HTTPS_PROXY = os.getenv("HTTPS_PROXY", "") or os.getenv("https_proxy", "")
+# API Key from Railway Variables
+# Set in Railway: VOLTX_API_KEY or MAUTHAPI_KEY or API_KEY_2OO9
+API_KEY = os.getenv("VOLTX_API_KEY", "") or os.getenv("MAUTHAPI_KEY", "") or os.getenv("API_KEY_2OO9", "") or os.getenv("PANEL_API_KEY", "")
 
-_session_151 = None
-_session_time = 0
-_session_lock = threading.Lock()
-_last_hit = 0
-_hit_lock = threading.Lock()
-_orders_store = {}
+# Store orders: order_id -> {number, country, service, time}
+_orders = {}
+# Cache OTPs to avoid hitting API too much
+_otp_cache = {}
+_last_otp_fetch = 0
 
-def get_proxies():
-    if HTTP_PROXY:
-        return {"http": HTTP_PROXY, "https": HTTPS_PROXY or HTTP_PROXY}
+def get_headers():
+    return {
+        "mauthapi": API_KEY,
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+def load_ranges():
+    """Load ranges from ranges.json - maps country to rid"""
+    try:
+        for path in ["/data/ranges.json", "./ranges.json", "ranges.json"]:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                    return data
+    except:
+        pass
+    return {}
+
+def get_rid_for_country(country_code, service="FACEBOOK"):
+    """Get rid for country from ranges.json"""
+    try:
+        ranges = load_ranges()
+        # ranges structure: {"FACEBOOK": {"NEPAL": "26134"}, "WHATSAPP": {...}}
+        service_upper = service.upper()
+        if service_upper in ranges:
+            if country_code.upper() in ranges[service_upper]:
+                return str(ranges[service_upper][country_code.upper()])
+        # Try without service grouping
+        # Also check if country_code directly in file
+        for srv, countries in ranges.items():
+            if isinstance(countries, dict):
+                if country_code.upper() in countries:
+                    return str(countries[country_code.upper()])
+                # Try base name without _FB, _TT etc
+                base = country_code.upper().split("_")[0]
+                if base in countries:
+                    return str(countries[base])
+        # If ranges.json is simple dict: {"NEPAL": "26134"}
+        if country_code.upper() in ranges:
+            return str(ranges[country_code.upper()])
+    except Exception as e:
+        print(f"[RID LOOKUP ERR] {e}")
     return None
 
-def rate_limit():
-    global _last_hit
-    with _hit_lock:
-        now = time.time()
-        diff = now - _last_hit
-        if diff < 10:
-            wait = 10 - diff
-            print(f"[RATE] Waiting {wait:.1f}s before panel hit")
-            time.sleep(wait)
-        _last_hit = time.time()
-
-def solve_captcha(text):
+def create_order(service, country_code):
+    """Allocate number from 2oo9.cloud API"""
+    global _orders
+    
+    if not API_KEY:
+        print("[2oo9] API Key not set! Set VOLTX_API_KEY in Railway Variables")
+        return None
+    
+    rid = get_rid_for_country(country_code, service)
+    
+    if not rid:
+        print(f"[2oo9] No rid found for {country_code} / {service}. Use /add {service} {country_code} <rid>")
+        print(f"[2oo9] Example: /add FB NEPAL 26134")
+        return None
+    
+    # Clean rid - remove XXX if present
+    rid_clean = rid.replace("XXX", "").replace("xxx", "").strip()
+    
+    print(f"[2oo9] Creating order: service={service} country={country_code} rid={rid_clean}")
+    
     try:
-        m = re.search(r'What is (\d+)\s*([\+\-])\s*(\d+)', text, re.I)
-        if m:
-            a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
-            ans = a + b if op == '+' else a - b
-            print(f"[CAPTCHA] {a} {op} {b} = {ans}")
-            return ans
-        return None
-    except:
-        return None
-
-def get_session_151():
-    global _session_151, _session_time
-    with _session_lock:
-        # Use cached session if < 20 min old - CRITICAL to avoid 8 concurrent logins
-        if _session_151 and (time.time() - _session_time < 1200):
-            try:
-                rate_limit()
-                test = _session_151.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=15, proxies=get_proxies())
-                if test.status_code == 200 and "login" not in test.url.lower():
-                    print("[151] Using cached session")
-                    return _session_151
-            except Exception as e:
-                print(f"[151 CACHE CHECK ERR] {e}")
+        url = f"{BASE_URL}/getnum"
+        headers = get_headers()
+        payload = {"rid": rid_clean}
         
-        print("[151] New session - GET login")
-        session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0"})
+        print(f"[2oo9] POST {url} rid={rid_clean}")
+        resp = requests.post(url, json=payload, headers=headers, timeout=20)
         
-        if not PANEL_151_USER or not PANEL_151_PASS:
-            print("[151] USER/PASS not set!")
-            return None
-        
-        # 5 retries with exponential backoff
-        resp = None
-        for i in range(5):
-            try:
-                rate_limit()
-                resp = session.get(NEW_PANEL_LOGIN, timeout=20, proxies=get_proxies())
-                break
-            except requests.exceptions.ConnectionError as e:
-                wait = (i+1)*10
-                print(f"[151] Conn refused GET retry {i+1}/5 wait {wait}s - Panel blocking Railway IP?")
-                if i == 4:
-                    print("[151] Panel blocked - check if http://151.80.19.204/ints/login accessible from browser")
-                    print("[151] If panel has firewall, whitelist Railway IP or use proxy")
-                    return None
-                time.sleep(wait)
-                continue
-        
-        if not resp:
-            return None
-        
-        print(f"[151] Login page len={len(resp.text)}")
-        
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        csrf = None
-        inp = soup.find('input', {'name': '_token'})
-        if inp:
-            csrf = inp.get('value')
-        
-        capt = solve_captcha(resp.text)
-        print(f"[151] Capt={capt} User={PANEL_151_USER}")
-        
-        data = {}
-        if csrf:
-            data['_token'] = csrf
-        data['username'] = PANEL_151_USER
-        data['password'] = PANEL_151_PASS
-        if capt is not None:
-            data['capt'] = str(capt)
-        
-        for attempt in range(3):
-            try:
-                rate_limit()
-                r = session.post(NEW_PANEL_SIGNIN, data=data, timeout=20, allow_redirects=True, 
-                               proxies=get_proxies(),
-                               headers={"Referer": NEW_PANEL_LOGIN, "Origin": NEW_PANEL_URL})
-                print(f"[151] POST signin -> {r.status_code} url={r.url} len={len(r.text)}")
-                if "login" not in r.url.lower():
-                    if any(x in r.text.lower() for x in ['logout','dashboard','sms']):
-                        print("[151 LOGIN SUCCESS]")
-                        _session_151 = session
-                        _session_time = time.time()
-                        return session
-            except requests.exceptions.ConnectionError:
-                print(f"[151] Conn refused POST retry {attempt+1} wait 15s")
-                time.sleep(15)
-                continue
-            except Exception as e:
-                print(f"[151 POST ERR] {e}")
-                continue
-        
-        print("[151 LOGIN FAILED]")
-        return None
-
-def get_otp_from_panel(order_id):
-    try:
-        # Stagger: random delay 2-10s to avoid 8 watchers hitting at once
-        delay = random.uniform(2, 10)
-        print(f"[OTP] {order_id} delay {delay:.1f}s to avoid rate limit")
-        time.sleep(delay)
-        
-        session = get_session_151()
-        if not session:
-            print("[OTP] No session - panel blocked, retry in 40s")
-            return None
-        
-        rate_limit()
-        print(f"[OTP] Fetch SMSDashboard for {order_id}")
-        try:
-            resp = session.get(f"{NEW_PANEL_URL}/ints/agent/SMSDashboard", timeout=25, proxies=get_proxies())
-        except requests.exceptions.ConnectionError:
-            print("[OTP] Conn refused on SMSDashboard - panel blocking, waiting 40s")
-            time.sleep(40)
-            return None
+        print(f"[2oo9] Response {resp.status_code}: {resp.text[:500]}")
         
         if resp.status_code != 200:
-            print(f"[OTP] Status {resp.status_code}")
+            print(f"[2oo9] HTTP Error {resp.status_code}")
             return None
         
-        if "login" in resp.url.lower():
-            print(f"[OTP] Session expired, clearing cache")
-            global _session_151
-            with _session_lock:
-                _session_151 = None
+        try:
+            data = resp.json()
+        except:
+            print(f"[2oo9] Invalid JSON: {resp.text[:500]}")
             return None
         
-        text = resp.text
-        print(f"[OTP] Dashboard len={len(text)}")
+        meta = data.get("meta", {})
+        code = meta.get("code", 0)
         
-        soup = BeautifulSoup(text, 'html.parser')
-        rows = soup.find_all('tr')
-        for row in rows:
-            rt = row.get_text()
-            if any(k in rt.lower() for k in ['facebook','fb','code']):
-                nums = re.findall(r'\b\d{4,8}\b', rt)
-                for otp in nums:
-                    if 4 <= len(otp) <= 8 and rt.count('+') < 3:
-                        print(f"[OTP FOUND] {otp} in row: {rt[:100]}")
-                        return otp
+        if code == 2946:
+            print(f"[2oo9] Out of stock for rid {rid_clean}")
+            return None
         
-        # Fallback regex
-        all_nums = re.findall(r'\b\d{5,6}\b', text)
-        for otp in all_nums:
-            pos = text.find(otp)
-            ctx = text[max(0,pos-200):pos+200].lower()
-            if 'facebook' in ctx or 'verification' in ctx:
-                print(f"[OTP FOUND] {otp} via context")
-                return otp
+        if code != 200:
+            print(f"[2oo9] API Error code={code} status={meta.get('status')} msg={data.get('message')}")
+            return None
         
-        print("[OTP] Not found yet")
-        return None
+        payload_data = data.get("data")
+        if not payload_data:
+            print(f"[2oo9] No data in response")
+            return None
+        
+        full_number = payload_data.get("full_number") or payload_data.get("no_plus_number") or payload_data.get("national_number")
+        national = payload_data.get("national_number")
+        no_plus = payload_data.get("no_plus_number")
+        
+        if not full_number:
+            print(f"[2oo9] No number in data: {payload_data}")
+            return None
+        
+        # Use no_plus_number as order_id for OTP lookup (e.g., 447404333228)
+        order_id = no_plus or re.sub(r'\D', '', full_number)
+        if not order_id:
+            order_id = full_number
+        
+        # Clean number
+        clean_number = full_number.replace("+", "").replace(" ", "")
+        
+        result = {
+            "number": clean_number,
+            "full_number": full_number,
+            "national_number": national,
+            "no_plus_number": no_plus,
+            "id": order_id,
+            "order_id": order_id,
+            "country": country_code,
+            "service": service,
+            "panel": "2oo9",
+            "rid": rid_clean
+        }
+        
+        _orders[order_id] = result
+        _orders[full_number] = result
+        _orders[clean_number] = result
+        
+        print(f"[2oo9] Got number: {full_number} -> order_id={order_id}")
+        return result
+        
     except Exception as e:
-        print(f"[OTP ERR] {e}")
+        print(f"[2oo9 CREATE ERR] {e}")
         import traceback
         traceback.print_exc()
         return None
 
-# ========== FILE NUMBERS - 8 per click ==========
-
-def get_numbers_file_path(country_code):
-    base = "/data" if os.path.exists("/data") else "."
-    file_map = {
-        "MOZAMBIQUE": "numbers_mozambique.txt",
-        "MOZAMBIQUE_TT": "numbers_mozambique.txt",
-        "MYANMAR": "numbers_myanmar.txt",
-        "MYANMAR_TT": "numbers_myanmar.txt",
-        "NEPAL": "numbers_nepal.txt",
-        "NEPAL_FB": "numbers_nepal.txt",
-        "CAMEROON": "numbers_cameroon.txt",
-        "USA": "numbers_usa.txt",
-        "BD": "numbers_bd.txt",
-        "CAMBODIA": "numbers_cambodia.txt",
-    }
-    fname = file_map.get(country_code.upper(), "numbers_151.txt")
-    candidates = [os.path.join(base, fname), os.path.join(base, "numbers_151.txt"), os.path.join(base, "numbers.txt"), fname, "numbers_151.txt", "numbers.txt"]
-    for fpath in candidates:
-        if os.path.exists(fpath):
-            try:
-                with open(fpath, 'r') as file:
-                    lines = [l.strip() for l in file.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
-                if len(lines) > 0:
-                    return fpath
-            except:
-                continue
-    for fpath in candidates:
-        if os.path.exists(fpath):
-            return fpath
-    return os.path.join(base, fname)
-
-def create_order_from_file(service, country_code):
+def get_otp(order_id):
+    """Get OTP from /success-otp endpoint"""
+    global _otp_cache, _last_otp_fetch
+    
+    if not API_KEY:
+        print("[2oo9 OTP] No API key")
+        return None
+    
+    # order_id is the phone number (no_plus_number)
+    search_number = str(order_id).replace("+", "").replace(" ", "").strip()
+    
+    print(f"[2oo9 OTP] Searching OTP for {search_number}")
+    
     try:
-        fpath = get_numbers_file_path(country_code)
-        if not os.path.exists(fpath):
-            base = "/data" if os.path.exists("/data") else "."
-            alt = os.path.join(base, "numbers_151.txt")
-            if os.path.exists(alt):
-                fpath = alt
-            else:
-                return None
-        with open(fpath, 'r') as f:
-            lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#") and any(c.isdigit() for c in l)]
-        if not lines:
+        # Check cache first (5 sec cache as per docs)
+        now = time.time()
+        if now - _last_otp_fetch < 5 and search_number in _otp_cache:
+            cached = _otp_cache[search_number]
+            if now - cached.get("_time", 0) < 10:
+                print(f"[2oo9 OTP] Using cached OTP for {search_number}")
+                return cached.get("otp")
+        
+        url = f"{BASE_URL}/success-otp"
+        headers = get_headers()
+        
+        resp = requests.get(url, headers=headers, timeout=15)
+        
+        print(f"[2oo9 OTP] GET {url} -> {resp.status_code}")
+        
+        if resp.status_code != 200:
+            print(f"[2oo9 OTP] HTTP {resp.status_code}: {resp.text[:300]}")
             return None
-        number = lines[0]
-        remaining = lines[1:]
-        with open(fpath, 'w') as fw:
-            for ln in remaining:
-                fw.write(ln + "\n")
-        order_id = f"151_{int(time.time())}_{random.randint(1000,9999)}"
-        result = {"number": number, "id": order_id, "country": country_code, "service": service, "panel": "151_file"}
-        print(f"[FILE ORDER] {country_code} -> {number} | Remaining: {len(remaining)}")
-        return result
+        
+        try:
+            data = resp.json()
+        except:
+            print(f"[2oo9 OTP] Invalid JSON")
+            return None
+        
+        meta = data.get("meta", {})
+        if meta.get("code") != 200:
+            print(f"[2oo9 OTP] API Error: {meta}")
+            return None
+        
+        payload = data.get("data", {})
+        otps = payload.get("otps", [])
+        
+        if not otps:
+            print(f"[2oo9 OTP] No OTPs yet, got {len(otps)} total")
+            return None
+        
+        # Find OTP for our number
+        for otp_entry in otps:
+            otp_number = str(otp_entry.get("number", "")).replace("+", "").replace(" ", "")
+            if otp_number == search_number or search_number in otp_number or otp_number in search_number:
+                message = otp_entry.get("message", "")
+                # Extract OTP digits from message
+                # Look for 4-8 digit code
+                match = re.search(r'\b(\d{4,8})\b', message)
+                if match:
+                    otp_code = match.group(1)
+                    print(f"[2oo9 OTP FOUND] {search_number} -> {otp_code} from: {message[:100]}")
+                    _otp_cache[search_number] = {"otp": otp_code, "_time": now, "message": message}
+                    _last_otp_fetch = now
+                    return otp_code
+                # If no clear code, try to extract any digits
+                digits = re.findall(r'\d{4,8}', message)
+                if digits:
+                    # Take the most likely OTP (usually 4-6 digits, not part of phone)
+                    for d in digits:
+                        if d != otp_number and len(d) >= 4:
+                            print(f"[2oo9 OTP FOUND] {search_number} -> {d} from: {message[:100]}")
+                            _otp_cache[search_number] = {"otp": d, "_time": now, "message": message}
+                            _last_otp_fetch = now
+                            return d
+        
+        print(f"[2oo9 OTP] No OTP for {search_number} in {len(otps)} entries")
+        # Debug: show first few OTPs
+        for entry in otps[:3]:
+            print(f"  OTP entry: {entry.get('number')} -> {entry.get('message')[:50]}")
+        
+        _last_otp_fetch = now
+        return None
+        
     except Exception as e:
-        print(f"[FILE ERR] {e}")
+        print(f"[2oo9 OTP ERR] {e}")
         import traceback
         traceback.print_exc()
         return None
 
 def get_all_countries(service):
-    return ["NEPAL_FB", "MOZAMBIQUE", "MYANMAR", "CAMEROON", "USA", "BD", "NEPAL", "MOZAMBIQUE_TT", "MYANMAR_TT", "CAMBODIA"]
+    """Get countries from ranges.json"""
+    try:
+        ranges = load_ranges()
+        countries = []
+        service_upper = service.upper()
+        
+        # If service exists in ranges
+        if service_upper in ranges and isinstance(ranges[service_upper], dict):
+            countries = list(ranges[service_upper].keys())
+        else:
+            # Collect from all services
+            for srv, cmap in ranges.items():
+                if isinstance(cmap, dict):
+                    for c in cmap.keys():
+                        if c not in countries:
+                            countries.append(c)
+        
+        # Also include base names
+        if not countries:
+            # Fallback - try to read directly
+            for srv, cmap in ranges.items():
+                if isinstance(cmap, dict):
+                    countries.extend(cmap.keys())
+                elif isinstance(cmap, str):
+                    countries.append(srv)
+        
+        # Remove duplicates, keep unique
+        unique = []
+        seen = set()
+        for c in countries:
+            base = c.upper()
+            if base not in seen:
+                unique.append(base)
+                seen.add(base)
+        
+        print(f"[2oo9] Countries for {service}: {unique}")
+        return unique if unique else ["NEPAL", "USA", "BD"]
+    except Exception as e:
+        print(f"[2oo9 GET COUNTRIES ERR] {e}")
+        return ["NEPAL_FB", "USA", "BD"]
 
 def get_display_name(country_code):
-    names = {"NEPAL": "Nepal", "NEPAL_FB": "Nepal", "MOZAMBIQUE": "Mozambique", "MYANMAR": "Myanmar", "CAMEROON": "Cameroon", "USA": "USA", "BD": "Bangladesh", "CAMBODIA": "Cambodia"}
+    names = {
+        "NEPAL": "Nepal", "NEPAL_FB": "Nepal",
+        "USA": "USA", "USA_FB": "USA",
+        "BD": "Bangladesh", "BANGLADESH": "Bangladesh",
+        "UK": "UK", "GB": "UK",
+        "MOZAMBIQUE": "Mozambique", "MYANMAR": "Myanmar",
+        "CAMEROON": "Cameroon", "CAMBODIA": "Cambodia"
+    }
     return names.get(country_code.upper(), country_code.replace("_", " ").title())
 
-def create_order(service, country_code):
-    result = create_order_from_file(service, country_code)
-    if result:
-        _orders_store[result["id"]] = result
-        return result
-    return None
-
-def get_otp(order_id):
-    print(f"[GET OTP] {order_id}")
-    otp = get_otp_from_panel(order_id)
-    if otp:
-        print(f"[GET OTP] Found: {otp}")
-        return otp
-    return None
-
-print("[PANEL] FINAL - Rate limit 10s + Cached session + Proxy support + SMSDashboard")
-print(f"[PANEL] User={PANEL_151_USER} PassSet={bool(PANEL_151_PASS)} Proxy={'Set' if HTTP_PROXY else 'None'}")
+print("[PANEL] 2oo9.cloud ONLY - Voltx API")
+print(f"[PANEL] API Key: {'Set' if API_KEY else 'NOT SET - Set VOLTX_API_KEY in Railway!'}")
+print(f"[PANEL] Base: {BASE_URL}")
