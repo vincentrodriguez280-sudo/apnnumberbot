@@ -260,8 +260,7 @@ async def handle(update, context):
         for code in countries:
             display=get_display_name(code)
             flag=cfg["flags"].get(code.upper(), "🌍")
-            price=cfg["prices"].get(code.upper(), "0.003$")
-            kb.append([InlineKeyboardButton(f"{flag} {display} {price}", callback_data=f"c_{code}")])
+            kb.append([InlineKeyboardButton(f"{flag} {display}", callback_data=f"c_{code}")])
         kb.append([InlineKeyboardButton(buttons.get("back","⬅️ Back"), callback_data="services")])
         await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
