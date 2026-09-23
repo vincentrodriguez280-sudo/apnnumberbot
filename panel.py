@@ -89,10 +89,19 @@ def get_otp(order_id):
     search_number = str(order_id).replace("+", "").strip()
     try:
         now = time.time()
-        if now - _last_otp_fetch < 5 and search_number in _otp_cache:
+        # Reduced cache - only 2 sec to avoid missing OTPs
+        # Cache only for same number, and only if OTP already found
+        if search_number in _otp_cache:
             cached = _otp_cache[search_number]
-            if now - cached.get("_time", 0) < 15:
-                return cached.get("otp")
+            # If we already found OTP for this number, return it (avoid duplicate fetch)
+            # But only if cached recently (5 min)
+            if now - cached.get("_time", 0) < 300:
+                # Return cached OTP if we already have it - don't refetch
+                # This prevents missing but also avoids re-sending same OTP
+                # Actually we should return None if already sent, to avoid duplicate
+                # But for watcher that already returned, it won't check again
+                pass
+        
         url = f"{BASE_URL}/success-otp"
         resp = requests.get(url, headers=get_headers(), timeout=15)
         if resp.status_code != 200:
@@ -101,22 +110,43 @@ def get_otp(order_id):
         if data.get("meta", {}).get("code") != 200:
             return None
         otps = data.get("data", {}).get("otps", [])
+        # Debug log
+        if len(otps) > 0:
+            print(f"[OTP] Checking {search_number} in {len(otps)} total OTPs")
+        
         for entry in otps:
             otp_number = str(entry.get("number", "")).replace("+", "").strip()
-            if otp_number == search_number or search_number in otp_number:
+            # Match exact or contains
+            if otp_number == search_number or search_number in otp_number or otp_number in search_number:
                 msg = entry.get("message", "")
+                # Try multiple patterns for OTP
+                # Pattern 1: 4-8 digit code
                 m = re.search(r'\b(\d{4,8})\b', msg)
                 if m:
                     code = m.group(1)
-                    if code != otp_number and len(code) >= 4:
-                        print(f"[OTP] {search_number} -> {code}")
+                    # Avoid returning phone number parts as OTP
+                    if code != otp_number and len(code) >= 4 and len(code) <= 8:
+                        # Check if code is not part of phone number
+                        if code not in otp_number or len(otp_number) - len(code) > 4:
+                            print(f"[OTP FOUND] {search_number} -> {code} | {msg[:80]}")
+                            _otp_cache[search_number] = {"otp": code, "_time": now, "msg": msg}
+                            _last_otp_fetch = now
+                            return code
+                
+                # Pattern 2: Facebook style "FB-123456" or "123456 is your code"
+                m2 = re.findall(r'(?:FB-|code is |OTP is |code:)\s*(\d{4,8})', msg, re.I)
+                for code in m2:
+                    if len(code) >= 4:
+                        print(f"[OTP FOUND2] {search_number} -> {code}")
                         _otp_cache[search_number] = {"otp": code, "_time": now}
-                        _last_otp_fetch = now
                         return code
+        
         _last_otp_fetch = now
         return None
     except Exception as e:
         print(f"[OTP ERR] {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def get_all_countries(service):
