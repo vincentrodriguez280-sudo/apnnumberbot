@@ -218,41 +218,6 @@ async def handle_text_messages(update, context):
 
 async def show_services(update, context):
     cfg=load_config()
-    # If only Facebook, directly show countries
-    if len(cfg["services"]) == 1 and cfg["services"][0] == "FACEBOOK":
-        service = "FACEBOOK"
-        context.user_data['service'] = service
-        from panel import get_all_countries, get_display_name
-        countries = get_all_countries(service)
-        if not countries:
-            if update.effective_user.id == ADMIN_ID:
-                txt = f"❌ No ranges for {service}!\n/add {service} NEPAL 26134"
-            else:
-                txt = f"❌ No numbers yet!"
-            if isinstance(update, Update) and update.message:
-                await update.message.reply_text(txt, parse_mode="Markdown")
-            else:
-                await update.edit_message_text(txt, parse_mode="Markdown")
-            return
-        buttons = cfg["buttons"]
-        txt = cfg["texts"]["select_country"].format(platform=service.title())
-        kb = []
-        for code in countries:
-            display = get_display_name(code)
-            flag = cfg["flags"].get(code.upper(), "🌍")
-            price = cfg["prices"].get(code.upper(), "0.003$")
-            kb.append([InlineKeyboardButton(f"{flag} {display} {price}", callback_data=f"c_{code}")])
-        kb.append([InlineKeyboardButton(buttons.get("back","⬅️ Back"), callback_data="main_menu")])
-        if isinstance(update, Update) and update.message:
-            await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            # If called from callback, q is not available, use update.callback_query
-            try:
-                await update.callback_query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-            except:
-                await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        return
-    
     buttons=cfg["buttons"]
     txt=cfg["texts"]["select_service"]
     kb=[]
@@ -261,8 +226,14 @@ async def show_services(update, context):
         btn_text=buttons.get(key, srv)
         kb.append([InlineKeyboardButton(btn_text, callback_data=f"s_{srv}")])
     kb.append([InlineKeyboardButton(buttons.get("back","⬅️ Back"), callback_data="main_menu")])
-    if isinstance(update, Update) and update.message: await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-    else: await update.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        try:
+            await update.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+        except:
+            # For callback query case
+            await update.callback_query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
 
 async def handle(update, context):
     q=update.callback_query
