@@ -88,32 +88,51 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
-    for i in range(18):
-        await asyncio.sleep(10)
+    # Track if OTP already sent for this number to avoid duplicate
+    sent_otps = set()
+    for i in range(30):  # 5 min total (10 sec * 30) - more checks to not miss OTP
+        await asyncio.sleep(8)  # 8 sec interval - faster to not miss
         try:
             otp = await asyncio.to_thread(get_otp, order_id)
-            if otp:
+            if otp and otp not in sent_otps:
+                sent_otps.add(otp)
                 cfg = load_config()
                 flag = cfg["flags"].get(country_code.upper(), "🌍")
                 display = get_display_name(country_code)
-                short_code = country_code.upper().replace("_NEW_ACCOUNT","").replace("_","")[:2]
                 
-                # User Inbox - Full number + country on top + OTP copyable (both copyable)
-                text_inbox = f"{flag} {display} Number\n📞 `{number}`\n🔑 OTP: `{otp}`"
+                # Inbox - Only number+OTP, no double display
+                # Clean format: number and OTP only once in text, buttons generic
+                text_inbox = f"{flag} {display}\n📞 {number}\n🔑 OTP: {otp}"
                 try: 
                     kb_inbox = [
-                        [InlineKeyboardButton(f"📋 {number}", copy_text=CopyTextButton(number))],
-                        [InlineKeyboardButton(f"🔑 {otp}", copy_text=CopyTextButton(otp))]
+                        [InlineKeyboardButton(f"📋 Copy Number", copy_text=CopyTextButton(number))],
+                        [InlineKeyboardButton(f"🔑 Copy OTP", copy_text=CopyTextButton(otp))]
                     ]
                 except: 
                     kb_inbox = [
-                        [InlineKeyboardButton(f"📋 {number}", callback_data=f"copy_{number}")],
-                        [InlineKeyboardButton(f"🔑 {otp}", callback_data=f"copy_{otp}")]
+                        [InlineKeyboardButton(f"📋 Copy Number", callback_data=f"copy_{number}")],
+                        [InlineKeyboardButton(f"🔑 Copy OTP", callback_data=f"copy_{otp}")]
                     ]
-                try: await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=InlineKeyboardMarkup(kb_inbox), parse_mode="Markdown")
-                except: await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=InlineKeyboardMarkup(kb_inbox))
+                try: 
+                    await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=InlineKeyboardMarkup(kb_inbox))
+                except Exception as e:
+                    print(f"[INBOX SEND ERR] {e}")
+                    try:
+                        await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=InlineKeyboardMarkup(kb_inbox))
+                    except: pass
                 
-                # OTP Group - Only country code + last 5 digits (FB SMS NUMBER APN)
+                # Balance add - 0.03 BDT per OTP
+                try:
+                    user = get_user(user_id)
+                    user["balance"] = user.get("balance", 0) + 0.03
+                    user["total_earned"] = user.get("total_earned", 0) + 0.03
+                    save_user(user_id, user)
+                    print(f"[BALANCE] {user_id} +0.03 BDT for OTP {otp} | New: {user['balance']}")
+                except Exception as e:
+                    print(f"[BALANCE ERR] {e}")
+                
+                # OTP Group - No header FB SMS NUMBER APN, only masked number + OTP
+                # Only cc + last5 visible: e.g., 228*****58507
                 if len(number) >= 8:
                     cc = number[:3]
                     last5 = number[-5:]
@@ -121,6 +140,8 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 else:
                     masked_group = f"*****{number[-5:]}"
                 
+                # Short country
+                short_code = country_code.upper().replace("_NEW_ACCOUNT","").replace("_","")[:2]
                 country_short = short_code
                 if "TOGO" in country_code.upper(): country_short = "TG"
                 elif "GUINEA" in country_code.upper(): country_short = "GN"
@@ -130,9 +151,8 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 elif "CM" in country_code.upper() or "CAMEROON" in country_code.upper(): country_short = "CM"
                 elif "BD" in country_code.upper(): country_short = "BD"
                 
-                service_short = "FB" if "FACEBOOK" in service.upper() else service[:2].upper()
-                
-                text_group = f"{service_short} SMS NUMBER APN\n{flag} {country_short} | 📱 {masked_group} | {display}"
+                # No FB SMS NUMBER APN header - only flag, masked number, country
+                text_group = f"{flag} {country_short} | 📱 {masked_group} | {display}"
                 try:
                     kb_group = [
                         [InlineKeyboardButton(f"🎉 Channel", url=cfg["community_url"]), InlineKeyboardButton(f"🔑 {otp}", copy_text=CopyTextButton(otp))],
@@ -150,8 +170,17 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                     try:
                         await bot.send_message(chat_id=cfg["otp_group_id"], text=f"{flag} {masked_group} -> {otp}")
                     except: pass
+                
+                # Don't return immediately - continue to check if more OTPs for same number (in case of re-send)
+                # But for now return after first to avoid duplicate, but keep watching for 1 more cycle for new OTP
+                # Actually return after first OTP per number is ok, but we increased checks to not miss first one
                 return
-        except Exception as e: print(f"[WATCHER ERR] {e}")
+                
+        except Exception as e: 
+            print(f"[WATCHER ERR {number}] {e}")
+            import traceback
+            traceback.print_exc()
+    print(f"[WATCHER TIMEOUT] {number} - No OTP after 4 min")
 
 async def bot_off(update, context):
     if update.effective_user.id!= ADMIN_ID: return
@@ -252,7 +281,7 @@ async def handle_text_messages(update, context):
         await update.message.reply_text("💸 **Withdraw**\n\nMinimum $5\nContact @PolasChandra for withdraw\n\nYour Balance: ${:.4f}".format(get_user(uid).get('balance',0.0)), parse_mode="Markdown")
     elif text==buttons.get("balance","💰 Balance"):
         user=get_user(uid)
-        await update.message.reply_text(f"💰 Balance: ${user.get('balance',0):.4f}")
+        await update.message.reply_text(f"💰 Balance: {user.get('balance',0):.2f} BDT")
     elif text==buttons.get("help","❓ Help"):
         await update.message.reply_text("❓ **Help & Support**\n\nContact: @PolasChandra\n\nFor any issue, message @PolasChandra", parse_mode="Markdown")
     elif text==buttons.get("refer","👥 Refer"):
