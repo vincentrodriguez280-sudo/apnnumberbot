@@ -1,27 +1,25 @@
 
 import os, json, asyncio, shutil, re
-from datetime import datetime, date
+from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, KeyboardButton, CopyTextButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from panel import create_order, get_otp, get_all_countries, get_display_name
 
-print("[BOT] ADMIN PANEL + 2oo9.cloud Voltx Panel ONLY!")
+print("[BOT] Professional - No panel name, auto buttons from GitHub ranges")
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 1853202569
 
 for p in ["/data", "/app/data", "."]:
     try:
-        if os.path.exists(p) or p in ["/data", "/app/data"]:
-            os.makedirs(p, exist_ok=True)
-            if os.path.exists(p):
-                BASE_DIR = p
-                break
+        os.makedirs(p, exist_ok=True)
+        if os.path.exists(p):
+            BASE_DIR = p
+            break
     except:
         continue
 else:
     BASE_DIR = "."
-    os.makedirs(BASE_DIR, exist_ok=True)
 
 BAL_FILE = os.path.join(BASE_DIR, "balances.json")
 TRAFFIC_FILE = os.path.join(BASE_DIR, "traffic.json")
@@ -47,11 +45,13 @@ DEFAULT_CONFIG = {
     "flags": {
         "NEPAL": "🇳🇵", "NEPAL_FB": "🇳🇵", "USA": "🇺🇸", "BD": "🇧🇩", "UK": "🇬🇧", "GB": "🇬🇧",
         "MOZAMBIQUE": "🇲🇿", "MYANMAR": "🇲🇲", "CAMEROON": "🇨🇲", "CAMBODIA": "🇰🇭",
-        "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "GUINEA": "🇬🇳", "MADAGASCAR": "🇲🇬"
+        "MADAGASCAR": "🇲🇬", "MADAGASCARNEWACCOUNT": "🇲🇬", "MADAGASCAR_NEW_ACCOUNT": "🇲🇬",
+        "MOROCCO": "🇲🇦", "NIGERIA": "🇳🇬", "GUINEA": "🇬🇳", "MONTENEGRO": "🇲🇪"
     },
     "prices": {
         "NEPAL": "0.005$", "NEPAL_FB": "0.005$", "USA": "0.003$", "BD": "0.005$",
-        "UK": "0.005$", "GB": "0.005$", "DEFAULT": "0.003$"
+        "MADAGASCARNEWACCOUNT": "0.005$", "MADAGASCAR_NEW_ACCOUNT": "0.005$", "MADAGASCAR": "0.005$",
+        "DEFAULT": "0.003$"
     },
     "buttons": {
         "get_number": "📱 Get Number",
@@ -70,14 +70,15 @@ DEFAULT_CONFIG = {
         "admin_panel": "⚙️ Admin Panel"
     },
     "texts": {
-        "start": "Welcome to APN Number Bot! 🎉\n\nGet fresh numbers for Facebook, WhatsApp, TikTok verification!\n\nPowered by Voltx API",
+        "start": "Welcome to APN Number Bot! 🎉\n\nGet fresh numbers for verification!",
         "select_service": "💳 Select Platform:",
-        "select_country": "💳 {platform} - দেশ সিলেক্ট করুন:",
-        "fetching": "⏳ Fetching {count} numbers for {country}...",
-        "no_stock": "❌ Out of Stock! {country}",
+        "select_country": "💳 {platform} - Select country:",
+        "fetching": "⏳ Getting number for {country}...",
+        "no_stock_user": "❌ Out of Stock! {country}\n\nPlease try again later or contact support.",
+        "no_stock_admin": "❌ Out of Stock! {country}\n\nRid not set or empty. Use /add {service} {country} <rid>\nCheck /list",
         "number_header": "────────── ⋆⋅☆⋅⋆ ──────────\n{flag} {country} Fresh Number 💸\n📱 {platform}\n────────── ⋆⋅☆⋅⋆ ──────────\n\n💫 Wait 10s for OTP 🖤",
         "join_required": "⚠️ You must join our channels first!",
-        "balance_text": "💰 Your Balance: ${balance:.4f}"
+        "balance_text": "💰 Balance: ${balance:.4f}"
     }
 }
 
@@ -104,17 +105,14 @@ def save_config(cfg):
             json.dump(cfg, f, indent=2)
         with open("./bot_config.json", 'w') as f:
             json.dump(cfg, f, indent=2)
-    except Exception as e:
-        print(f"[CONFIG SAVE ERR] {e}")
+    except: pass
 
 def load_json(f, default):
     for path in [f, os.path.join(".", os.path.basename(f))]:
         if os.path.exists(path):
             try:
                 with open(path,'r') as fp: 
-                    data = json.load(fp)
-                    if data: 
-                        return data
+                    return json.load(fp)
             except: continue
     return default
 
@@ -172,32 +170,35 @@ def mask_number(num):
 def format_for_inbox(country_code, full_number, service, otp_code):
     cfg = load_config()
     flags = cfg["flags"]
-    clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
+    clean = country_code.upper()
     flag = flags.get(clean, flags.get(clean.split("_")[0], "🌍"))
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
+    # Display name clean
+    display = get_display_name(country_code)
     service_display = "Facebook" if "FACEBOOK" in service.upper() else service.title()
-    earn_text = cfg["prices"].get(clean, cfg["prices"].get("DEFAULT", "+$0.003"))
-    text = f"{flag} {clean.title()}\n📞 `{full_number}`\n💼 Service: {service_display}\n💳 Earned: {earn_text}"
+    earn = cfg["prices"].get(clean, cfg["prices"].get("DEFAULT", "0.003$"))
+    text = f"{flag} {display}\n📞 `{full_number}`\n💼 {service_display} | {earn}"
     try:
-        keyboard = [[InlineKeyboardButton(f"🔑 {otp_digits}", copy_text=CopyTextButton(otp_digits))]]
+        kb = [[InlineKeyboardButton(f"🔑 {otp_digits}", copy_text=CopyTextButton(otp_digits))]]
     except:
-        keyboard = [[InlineKeyboardButton(f"📋 Copy {otp_digits}", callback_data=f"copy_{otp_digits}")]]
-    return text, InlineKeyboardMarkup(keyboard)
+        kb = [[InlineKeyboardButton(f"📋 {otp_digits}", callback_data=f"copy_{otp_digits}")]]
+    return text, InlineKeyboardMarkup(kb)
 
 def format_for_group(country_code, full_number, service, otp_code):
     cfg = load_config()
     flags = cfg["flags"]
-    clean = country_code.upper().replace("_FB","").replace("_WS","").replace("_2","")
+    clean = country_code.upper()
     masked = mask_number(full_number)
     otp_digits = ''.join(filter(str.isdigit, str(otp_code)))
+    display = get_display_name(country_code)
     service_display = "Facebook" if "FACEBOOK" in service.upper() else service.title()
-    text = f"APN NUMBER BOT\n💳 #{clean} 📱 {service_display}\n\n╭─────────────────╮\n  {masked}\n╰─────────────────╯"
+    text = f"APN NUMBER BOT\n💳 #{clean} 📱 {service_display}\n\n╭─────────────────╮\n  {masked}\n╰─────────────────╯\n🗣 {display}"
     try:
         otp_btn = InlineKeyboardButton(f"🔓 {otp_digits}", copy_text=CopyTextButton(otp_digits))
     except:
         otp_btn = InlineKeyboardButton(f"🔓 {otp_digits}", callback_data=f"copy_{otp_digits}")
-    keyboard = [[otp_btn], [InlineKeyboardButton(cfg["buttons"].get("number_btn","🔢 Number"), url=cfg["number_bot_url"]), InlineKeyboardButton(cfg["buttons"].get("channel_btn","📢 Channel"), url=cfg["community_url"])]]
-    return text, InlineKeyboardMarkup(keyboard)
+    kb = [[otp_btn], [InlineKeyboardButton(cfg["buttons"].get("number_btn","🔢 Number"), url=cfg["number_bot_url"]), InlineKeyboardButton(cfg["buttons"].get("channel_btn","📢 Channel"), url=cfg["community_url"])]]
+    return text, InlineKeyboardMarkup(kb)
 
 async def is_joined(user_id, context):
     if user_id == ADMIN_ID: return True
@@ -210,11 +211,9 @@ async def is_joined(user_id, context):
     return True
 
 async def otp_watcher(bot, order_id, user_id, number, service, country_code):
-    print(f"[WATCHER START] {number} {order_id} {country_code}")
-    # Voltx API: check every 10 sec for 3 min (18 checks)
+    print(f"[WATCHER] {number} {order_id} {country_code}")
     interval = 10
-    max_checks = 18
-    print(f"[WATCHER] {number} interval={interval}s max={max_checks} via 2oo9 API")
+    max_checks = 18  # 3 min
     for i in range(max_checks):
         await asyncio.sleep(interval)
         try:
@@ -223,15 +222,18 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
                 print(f"[OTP FOUND] {number} -> {otp}")
                 text_inbox, markup_inbox = format_for_inbox(country_code, number, service, otp)
                 text_group, markup_group = format_for_group(country_code, number, service, otp)
+                # Send to user inbox
                 try:
                     await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox, parse_mode="Markdown")
                 except:
                     await bot.send_message(chat_id=user_id, text=text_inbox, reply_markup=markup_inbox)
+                # Send to OTP group
                 try:
                     cfg = load_config()
                     await bot.send_message(chat_id=cfg["otp_group_id"], text=text_group, reply_markup=markup_group, parse_mode="Markdown")
                 except Exception as e:
-                    print(f"[FAIL GROUP] {e}")
+                    print(f"[GROUP FAIL] {e}")
+                # Balance
                 user = get_user(user_id)
                 cfg = load_config()
                 price_str = cfg["prices"].get(country_code.upper(), cfg["prices"].get("DEFAULT", "0.003$"))
@@ -247,10 +249,10 @@ async def otp_watcher(bot, order_id, user_id, number, service, country_code):
             print(f"[WATCHER ERR] {e}")
     print(f"[TIMEOUT] {number}")
 
-# ADMIN COMMANDS
+# ADMIN
 async def bot_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
-    save_json(MAINT_FILE, {"enabled": True, "reason": "Maintenance"})
+    save_json(MAINT_FILE, {"enabled": True})
     await update.message.reply_text("🔴 Bot OFF")
 
 async def bot_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -261,79 +263,42 @@ async def bot_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
     cfg = load_config()
-    txt = "⚙️ **ADMIN CONTROL PANEL - 2oo9 Voltx ONLY**\n\n"
-    txt += f"📱 Buttons: {len(cfg['buttons'])}\n💰 Prices: {len(cfg['prices'])}\n\n"
-    txt += "Commands:\n"
-    txt += "/set_button <key> <name> - Button name change\n"
-    txt += "/list_buttons - List all buttons\n"
-    txt += "/set_price <country> <price>\n"
-    txt += "/add <service> <country> <rid> - Add range\n"
-    txt += "/del <service> <country>\n"
-    txt += "/list - List ranges\n"
-    txt += "/debug - Check stock\n"
-    txt += "/clear_all_numbers confirm - Delete all\n"
-    txt += "\n**2oo9 API:**\n"
-    txt += "Base: api.2oo9.cloud\n"
-    txt += "Set API key in Railway: VOLTX_API_KEY\n"
-    
-    kb = [
-        [InlineKeyboardButton("📱 Buttons", callback_data="admin_buttons"), InlineKeyboardButton("💰 Prices", callback_data="admin_prices")],
-        [InlineKeyboardButton("📋 Ranges", callback_data="admin_ranges"), InlineKeyboardButton("📊 Stats", callback_data="admin_stats")],
-    ]
+    txt = "⚙️ **ADMIN PANEL**\n\n"
+    txt += "Button name change from bot:\n"
+    txt += "/set_button <key> <name>\n"
+    txt += "/list_buttons\n\n"
+    txt += "Ranges (GitHub auto):\n"
+    txt += "/add FB MADAGASCAR_NEW_ACCOUNT 12345\n"
+    txt += "/add FB NEPAL 26134\n"
+    txt += "/list\n/del FB NEPAL\n\n"
+    txt += "Numbers come from panel via rid"
+    kb = [[InlineKeyboardButton("📱 Buttons", callback_data="admin_buttons"), InlineKeyboardButton("📋 Ranges", callback_data="admin_ranges")]]
     await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def list_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
     cfg = load_config()
-    txt = "📱 **BUTTONS** - /set_button diye change koro:\n\n"
-    for key, val in cfg["buttons"].items():
-        txt += f"`{key}` = {val}\n"
-    txt += "\nExample:\n/set_button get_number 🔥 Get OTP"
+    txt = "📱 **BUTTONS** - Change with /set_button:\n\n"
+    for k,v in cfg["buttons"].items():
+        txt += f"`{k}` = {v}\n"
+    txt += "\nEx: /set_button get_number 🔥 Get OTP"
     await update.message.reply_text(txt, parse_mode="Markdown")
 
 async def set_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    try:
-        if len(context.args) < 2:
-            await update.message.reply_text("❌ Use: /set_button <key> <new_name>\nExample: /set_button get_number 🔥 Get Number")
-            return
-        key = context.args[0].lower()
-        new_name = " ".join(context.args[1:])
-        cfg = load_config()
-        if key not in cfg["buttons"]:
-            await update.message.reply_text(f"❌ Key '{key}' not found! Available: " + ", ".join(cfg["buttons"].keys()))
-            return
-        old = cfg["buttons"][key]
-        cfg["buttons"][key] = new_name
-        save_config(cfg)
-        await update.message.reply_text(f"✅ Button changed!\n\n`{key}`:\n{old} → {new_name}", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
-async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return
-    try:
-        if len(context.args) < 2:
-            await update.message.reply_text("❌ Use: /set_price <country> <price>")
-            return
-        country = context.args[0].upper()
-        price = context.args[1]
-        cfg = load_config()
-        old = cfg["prices"].get(country, "Not set")
-        cfg["prices"][country] = price
-        save_config(cfg)
-        await update.message.reply_text(f"✅ Price: {old} → {price}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
-async def clear_all_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return
-    if len(context.args) == 0 or context.args[0] != "confirm":
-        await update.message.reply_text("⚠️ Delete ALL? Use: /clear_all_numbers confirm")
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ /set_button <key> <new_name>\nEx: /set_button get_number 🔥 Get OTP")
         return
-    # For Voltx API, numbers are from API, not files, so just clear active
-    save_json(ACTIVE_FILE, {})
-    await update.message.reply_text("✅ Cleared active numbers")
+    key = context.args[0].lower()
+    new_name = " ".join(context.args[1:])
+    cfg = load_config()
+    if key not in cfg["buttons"]:
+        await update.message.reply_text(f"❌ Key not found! Available: {', '.join(cfg['buttons'].keys())}")
+        return
+    old = cfg["buttons"][key]
+    cfg["buttons"][key] = new_name
+    save_config(cfg)
+    await update.message.reply_text(f"✅ {key}: {old} → {new_name}", parse_mode="Markdown")
 
 async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -347,9 +312,9 @@ async def add_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if service not in data: data[service] = {}
         data[service][name] = rid
         save_json(RANGES_FILE, data)
-        await update.message.reply_text(f"✅ Added {service} - {name} = {rid}\n\nNow /getnum will use rid {rid} for {name}")
+        await update.message.reply_text(f"✅ Added {service} - {name} = {rid}\nButton auto created: {get_display_name(name)}")
     except:
-        await update.message.reply_text("❌ Use: /add FB NEPAL 26134\nExample: /add FB NEPAL 26134")
+        await update.message.reply_text("❌ Use: /add FB NEPAL 26134\n/add FB MADAGASCAR_NEW_ACCOUNT 12345")
 
 async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
@@ -357,50 +322,47 @@ async def del_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service = context.args[0].upper()
         name = context.args[1].upper()
         if service == "FB": service = "FACEBOOK"
-        if service == "WS": service = "WHATSAPP"
-        data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
+        data = load_json(RANGES_FILE, {})
         if name in data.get(service, {}):
             del data[service][name]
             save_json(RANGES_FILE, data)
-            await update.message.reply_text(f"🗑 Deleted {name}")
+            await update.message.reply_text(f"🗑 Deleted {name} from {service}")
         else:
-            await update.message.reply_text("❌ Not found")
+            await update.message.reply_text("❌ Not found - check /list")
     except:
-        await update.message.reply_text("❌ Use: /del FB NEPAL")
+        await update.message.reply_text("❌ /del FB NEPAL")
 
 async def list_range(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID: return
-    data = load_json(RANGES_FILE, {"FACEBOOK":{}, "WHATSAPP":{}})
-    txt = f"📋 **Ranges (2oo9 API)**\n\n"
+    data = load_json(RANGES_FILE, {})
+    txt = "📋 **Ranges - GitHub auto buttons**\n\n"
     for srv, ranges in data.items():
         txt += f"{srv}:\n"
         for n, r in ranges.items():
-            txt += f"- {n} = {r}\n"
+            txt += f"  {n} = {r} → {get_display_name(n)}\n"
         txt += "\n"
-    txt += "Add: /add FB NEPAL 26134"
+    txt += "Button auto creates from this list"
     await update.message.reply_text(txt, parse_mode="Markdown")
 
 async def debug_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
     data = load_json(RANGES_FILE, {})
-    txt = "📊 **2oo9 API Ranges**\n\n"
+    txt = "📊 **Ranges**\n\n"
     for srv, ranges in data.items():
         txt += f"{srv}: {len(ranges)} countries\n"
-        for n, r in list(ranges.items())[:5]:
-            txt += f"  {n}={r}\n"
-    await update.message.reply_text(txt, parse_mode="Markdown")
+    await update.message.reply_text(txt)
 
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Your ID: {update.effective_user.id}")
+    await update.message.reply_text(f"ID: {update.effective_user.id}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     cfg = load_config()
     if is_maintenance() and uid != ADMIN_ID:
-        await update.message.reply_text("🔧 Bot under maintenance")
+        await update.message.reply_text("🔧 Maintenance")
         return
     if not await is_joined(uid, context):
-        txt = "⚠️ Join our channels first!\n\n"
+        txt = cfg["texts"]["join_required"] + "\n\n"
         kb = []
         for ch in cfg["must_join"]:
             ch_name = ch.replace("@","")
@@ -408,6 +370,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("✅ Joined", callback_data="check_join")])
         await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb))
         return
+    # Professional welcome - NO panel name
     txt = cfg["texts"]["start"]
     buttons = cfg["buttons"]
     kb = [
@@ -419,16 +382,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([KeyboardButton(buttons.get("admin_panel","⚙️ Admin Panel"))])
     await update.message.reply_text(txt, reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True))
 
-async def is_joined(user_id, context):
-    if user_id == ADMIN_ID: return True
-    cfg = load_config()
-    for ch in cfg["must_join"]:
-        try:
-            m = await context.bot.get_chat_member(chat_id=ch, user_id=user_id)
-            if m.status in ['left','kicked']: return False
-        except: continue
-    return True
-
 async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text
@@ -439,19 +392,22 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
     elif text == buttons.get("my_numbers","📋 My Numbers"):
         nums = get_active_numbers(uid)
         if not nums:
-            await update.message.reply_text("📋 No active numbers")
+            await update.message.reply_text("📋 No numbers yet")
         else:
-            txt = "📋 Your Numbers:\n\n"
+            txt = "📋 Your Numbers:\n"
             for n in nums[-10:]:
-                txt += f"{n['number']} - {n['country']}\n"
+                txt += f"{n['number']} - {get_display_name(n['country'])}\n"
             await update.message.reply_text(txt)
     elif text == buttons.get("balance","💰 Balance"):
         user = get_user(uid)
         await update.message.reply_text(f"💰 Balance: ${user.get('balance',0):.4f}")
     elif text == buttons.get("admin_panel","⚙️ Admin Panel") and uid == ADMIN_ID:
         await admin_panel(update, context)
-    else:
-        await update.message.reply_text("Use buttons")
+    elif text == buttons.get("refer","👥 Refer"):
+        bot_username = (await context.bot.get_me()).username
+        await update.message.reply_text(f"👥 Refer: https://t.me/{bot_username}?start={uid}")
+    elif text == buttons.get("help","❓ Help"):
+        await update.message.reply_text("Contact support")
 
 async def show_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cfg = load_config()
@@ -489,19 +445,18 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if data.startswith("admin_") and uid == ADMIN_ID:
         if data == "admin_buttons":
-            txt = "📱 **BUTTONS**\n\n"
+            txt = "📱 **BUTTONS**\n"
             for k,v in cfg["buttons"].items():
-                txt += f"`{k}` = {v}\n"
-            txt += "\n/set_button get_number 🔥 Get OTP"
+                txt += f"{k} = {v}\n"
+            txt += "\n/set_button get_number New Name"
             await q.edit_message_text(txt, parse_mode="Markdown")
             return
         elif data == "admin_ranges":
-            await list_range(update, context)
-            return
-        elif data == "admin_stats":
             data_r = load_json(RANGES_FILE, {})
-            total = sum(len(v) for v in data_r.values() if isinstance(v, dict))
-            await q.edit_message_text(f"📊 Total ranges: {total}\n\nUse /list to see all")
+            txt = "📋 **Ranges**\n"
+            for srv, ranges in data_r.items():
+                txt += f"{srv}: {len(ranges)}\n"
+            await q.edit_message_text(txt)
             return
     
     if data.startswith("s_"):
@@ -509,7 +464,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['service'] = service
         countries = get_all_countries(service)
         if not countries:
-            await q.edit_message_text(f"❌ No ranges for {service}! Use /add {service} NEPAL 26134")
+            # Show message for user vs admin
+            if uid == ADMIN_ID:
+                await q.edit_message_text(f"❌ No ranges for {service}!\n\nUse /add {service} COUNTRY <rid>\nEx: /add {service} NEPAL 26134\n\nThen button auto creates", parse_mode="Markdown")
+            else:
+                await q.edit_message_text(f"❌ No numbers for {service} yet! Try later.")
             return
         txt = cfg["texts"]["select_country"].format(platform=service.title())
         kb = []
@@ -527,34 +486,36 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service = context.user_data.get('service', 'FACEBOOK')
         display = get_display_name(country_code)
         flag = cfg["flags"].get(country_code.upper(), "🌍")
-        num_count = 1  # Voltx API gives 1 number at a time
-        await q.edit_message_text(f"⏳ Fetching number for {display}...")
-        nums = []
+        await q.edit_message_text(cfg["texts"]["fetching"].format(country=display))
+        
         try:
             order = await asyncio.to_thread(create_order, service, country_code)
-            if order:
-                nums.append(order)
-                add_request(uid, display)
-                save_active_number(uid, order['number'], country_code, service)
-                context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
-        except Exception as e:
-            print(f"[CREATE ERR] {e}")
-        
-        if not nums:
-            await q.edit_message_text(f"❌ Out of Stock! {display}\n\nCheck /list - rid set?\nUse /add {service} {country_code} <rid>", parse_mode="Markdown")
-            return
-        header = f"{flag} {display} Fresh Number 💸\n📱 {service.title()}\n"
-        txt = header
-        kb = []
-        for o in nums:
+            if not order:
+                # Different message for user vs admin
+                if uid == ADMIN_ID:
+                    await q.edit_message_text(cfg["texts"]["no_stock_admin"].format(country=display, service=service, country_code=country_code), parse_mode="Markdown")
+                else:
+                    await q.edit_message_text(cfg["texts"]["no_stock_user"].format(country=display), parse_mode="Markdown")
+                return
+            
+            add_request(uid, display)
+            save_active_number(uid, order['number'], country_code, service)
+            context.application.create_task(otp_watcher(context.bot, order['id'], uid, order['number'], service, country_code))
+            
+            header = cfg["texts"]["number_header"].format(flag=flag, country=display, platform=service.title())
+            txt = header
+            kb = []
             try:
-                kb.append([InlineKeyboardButton(f"{o['number']}", copy_text=CopyTextButton(o['number']))])
+                kb.append([InlineKeyboardButton(f"{order['number']}", copy_text=CopyTextButton(order['number']))])
             except:
-                kb.append([InlineKeyboardButton(f"{o['number']}", callback_data=f"copy_{o['number']}")])
-        kb.append([InlineKeyboardButton(buttons.get("view_otp","📥 View OTP"), url=cfg["otp_group"])])
-        kb.append([InlineKeyboardButton(buttons.get("change","🔄 Change"), callback_data=f"c_{country_code}"), InlineKeyboardButton(buttons.get("back","🔙 Back"), callback_data=f"s_{service}")])
-        await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
-        return
+                kb.append([InlineKeyboardButton(f"{order['number']}", callback_data=f"copy_{order['number']}")])
+            kb.append([InlineKeyboardButton(buttons.get("view_otp","📥 View OTP"), url=cfg["otp_group"])])
+            kb.append([InlineKeyboardButton(buttons.get("change","🔄 Change"), callback_data=f"c_{country_code}"), InlineKeyboardButton(buttons.get("back","🔙 Back"), callback_data=f"s_{service}")])
+            await q.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb))
+            
+        except Exception as e:
+            print(f"[C ERR] {e}")
+            await q.edit_message_text(f"❌ Error for {display}. Try later.")
 
 from telegram.request import HTTPXRequest
 request = HTTPXRequest(connection_pool_size=20, connect_timeout=30, read_timeout=30, write_timeout=30, pool_timeout=30)
@@ -574,8 +535,6 @@ app.add_handler(CommandHandler("list", list_range))
 app.add_handler(CommandHandler("off", bot_off))
 app.add_handler(CommandHandler("on", bot_on))
 app.add_handler(CommandHandler("set_button", set_button))
-app.add_handler(CommandHandler("set_price", set_price))
-app.add_handler(CommandHandler("clear_all_numbers", clear_all_numbers))
 app.add_handler(CommandHandler("list_buttons", list_buttons))
 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_messages))
